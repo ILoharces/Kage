@@ -202,6 +202,7 @@ func _expand_polygon(poly: PackedVector2Array, padding: float) -> PackedVector2A
 func _draw() -> void:
 	if is_open or _local_poly.size() < 3:
 		return
-	var panel_col: Color = ItemDB.COLOR_DOOR_EXIT if is_exit_door else ItemDB.COLOR_DOOR
-	draw_colored_polygon(_local_poly, panel_col)
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var panel: Texture2D = ArtLibrary.DOOR_EXIT if is_exit_door else ArtLibrary.DOOR
+	ArtDraw.stretch(self, _local_poly, panel)
 	draw_polyline(_local_poly + PackedVector2Array([_local_poly[0]]), ItemDB.COLOR_OUTLINE, OUTLINE_W, true)

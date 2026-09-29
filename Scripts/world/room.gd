@@ -29,6 +29,8 @@ var _passage_links: Dictionary = {}
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	add_to_group("room")
 	furniture_container = Node2D.new()
 	furniture_container.name = "Furniture"
@@ -85,27 +87,39 @@ func _draw() -> void:
 	var rw: float = get_room_w()
 	var rh: float = get_room_h()
 	var outline: Color = ItemDB.COLOR_OUTLINE
-	var wall_col: Color = ItemDB.COLOR_WALL
-	var floor_col: Color = ItemDB.COLOR_FLOOR
+	var room_quad: PackedVector2Array = PackedVector2Array([
+		Vector2.ZERO,
+		Vector2(rw, 0.0),
+		Vector2(rw, rh),
+		Vector2(0.0, rh),
+	])
+	ArtDraw.tiled(self, room_quad, ArtLibrary.WALL, ArtLibrary.TILE)
 
-	draw_rect(Rect2(0.0, 0.0, rw, rh), wall_col)
 	var back: PackedVector2Array = RoomPerspective.back_wall_polygon(rw, rh)
-	draw_colored_polygon(back, wall_col)
+	ArtDraw.tiled(self, back, ArtLibrary.WALL, ArtLibrary.TILE)
 	draw_polyline(back + PackedVector2Array([back[0]]), outline, OUTLINE_W, true)
 
 	var left_w: PackedVector2Array = RoomPerspective.left_wall_polygon(rw, rh)
-	draw_colored_polygon(left_w, wall_col.darkened(0.06))
+	ArtDraw.tiled(self, left_w, ArtLibrary.WALL_SIDE, ArtLibrary.TILE)
 	draw_polyline(left_w + PackedVector2Array([left_w[0]]), outline, OUTLINE_W, true)
 
 	var right_w: PackedVector2Array = RoomPerspective.right_wall_polygon(rw, rh)
-	draw_colored_polygon(right_w, wall_col.darkened(0.06))
+	ArtDraw.tiled(self, right_w, ArtLibrary.WALL_SIDE, ArtLibrary.TILE)
 	draw_polyline(right_w + PackedVector2Array([right_w[0]]), outline, OUTLINE_W, true)
 
 	var floor_poly: PackedVector2Array = RoomPerspective.floor_polygon(rw, rh)
-	draw_colored_polygon(floor_poly, floor_col)
+	var floor_tint: Color = ArtLibrary.FLOOR_EXIT_TINT if _has_exit_door() else Color.WHITE
+	ArtDraw.tiled(self, floor_poly, ArtLibrary.FLOOR, ArtLibrary.TILE, floor_tint)
 	draw_polyline(floor_poly + PackedVector2Array([floor_poly[0]]), outline, OUTLINE_W, true)
 
 	_draw_doors_on_walls(rw, rh, outline)
+
+
+func _has_exit_door() -> bool:
+	for door: Door in door_list:
+		if door.is_exit_door:
+			return true
+	return false
 
 
 func _draw_doors_on_walls(room_w: float, room_h: float, outline: Color) -> void:

@@ -30,6 +30,7 @@ var _inspect_visual_offset: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_to_group("furniture")
 	_build_collider()
 	_build_interact_zone()
@@ -78,16 +79,11 @@ func _draw() -> void:
 		depth = owning_room.get_depth_at_local(position)
 	var w: float = lerpf(SIZE.x * 0.62, SIZE.x, depth)
 	var h: float = lerpf(SIZE.y * 0.5, SIZE.y, depth)
-	var col: Color = ItemDB.FURNITURE_COLORS.get(kind, Color.GRAY)
 	var offset: Vector2 = _inspect_visual_offset
-	var pts: PackedVector2Array = PackedVector2Array([
-		Vector2(-w * 0.5, h * 0.5) + offset,
-		Vector2(w * 0.5, h * 0.5) + offset,
-		Vector2(w * 0.5, -h * 0.5) + offset,
-		Vector2(-w * 0.5, -h * 0.5) + offset,
-	])
-	draw_colored_polygon(pts, col)
-	draw_polyline(pts + PackedVector2Array([pts[0]]), ItemDB.COLOR_OUTLINE, 2.0, true)
+	var tex: Texture2D = ArtLibrary.furniture_texture(kind)
+	var rect := Rect2(Vector2(-w * 0.5, -h * 0.55) + offset, Vector2(w, h))
+	if tex != null:
+		draw_texture_rect(tex, rect, false)
 	_draw_kind_label(w, h, offset)
 	if is_open and state == State.HAS_WEAPON and not hidden_weapon_id.is_empty():
 		_draw_hidden_weapon(w, h, offset)

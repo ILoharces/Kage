@@ -66,22 +66,16 @@ func draw() -> void:
 	var depth: float = metrics["depth"] as float
 	var body_h: float = metrics["body_h"] as float
 	var body_w: float = metrics["body_w"] as float
-	var head_r: float = metrics["head_r"] as float
-	var col: Color = ItemDB.SPY_COLORS.get(host.spy_id, Color.WHITE)
 	var outline: Color = ItemDB.COLOR_OUTLINE
 	var walk_xf: Transform2D = _get_walk_transform(body_h)
+	host.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	host.draw_set_transform_matrix(walk_xf)
-	var body_pts: PackedVector2Array = PackedVector2Array([
-		Vector2(-body_w, body_h * 0.45),
-		Vector2(body_w, body_h * 0.45),
-		Vector2(body_w, -body_h * 0.45),
-		Vector2(-body_w, -body_h * 0.45),
-	])
-	host.draw_colored_polygon(body_pts, col)
-	host.draw_polyline(body_pts + PackedVector2Array([body_pts[0]]), outline, 2.0, true)
-	var head_c: Vector2 = Vector2(0.0, -body_h * 0.45 - head_r)
-	host.draw_circle(head_c, head_r, col)
-	host.draw_arc(head_c, head_r, 0.0, TAU, 16, outline, 2.0, false)
+	var tex: Texture2D = ArtLibrary.spy_texture(host.spy_id)
+	var top: float = metrics["head_top_y"] as float
+	var foot: float = metrics["foot_y"] as float
+	var width: float = (metrics["hitbox_size"] as Vector2).x
+	if tex != null:
+		host.draw_texture_rect(tex, Rect2(-width * 0.5, top, width, foot - top), false)
 	_draw_held_item(depth, body_h, body_w, outline, walk_xf)
 	host.draw_set_transform_matrix(Transform2D.IDENTITY)
 
@@ -151,34 +145,31 @@ func _draw_held_item(depth: float, body_h: float, body_w: float, outline: Color,
 	var held_h: float = lerpf(HELD_H_NEAR, HELD_H_FAR, depth) * SPY_SCALE
 	var center: Vector2 = Vector2(body_w * 0.72, -body_h * 0.05)
 	var rect: Rect2 = Rect2(center - Vector2(held_w * 0.5, held_h * 0.5), Vector2(held_w, held_h))
-	host.draw_rect(rect, host.held.get_display_color())
-	host.draw_rect(rect, outline, false, 2.0)
+	var icon: Texture2D = ArtLibrary.icon_for_held(host.held)
+	if icon != null:
+		host.draw_texture_rect(icon, rect, false)
+	else:
+		host.draw_rect(rect, host.held.get_display_color())
+		host.draw_rect(rect, outline, false, 2.0)
 	_draw_held_item_label(rect)
 
 
-func _draw_held_weapon(depth: float, body_h: float, body_w: float, outline: Color, walk_xf: Transform2D) -> void:
+func _draw_held_weapon(depth: float, body_h: float, body_w: float, _outline: Color, walk_xf: Transform2D) -> void:
 	var weapon: WeaponData = WeaponDB.get_weapon(host.held.get_weapon_id())
 	if weapon != null and weapon.orbital_strike:
-		_draw_held_orbital_computer(depth, body_h, body_w, outline)
+		_draw_held_orbital_computer(depth, body_h, body_w, _outline)
 		return
 	var held_w: float = lerpf(HELD_W_NEAR, HELD_W_FAR, depth) * SPY_SCALE
 	var held_h: float = lerpf(HELD_H_NEAR, HELD_H_FAR, depth) * SPY_SCALE
 	var grip: Vector2 = Vector2(body_w * PISTOL_GRIP_X, body_h * PISTOL_GRIP_Y)
 	var angle: float = host.aim_direction.angle() if host.aim_direction.length_squared() > 0.0001 else 0.0
 	var item_color: Color = host.held.get_display_color()
-	var body_rect: Rect2 = Rect2(
-		Vector2(-held_w * PISTOL_BODY_W_RATIO * 0.5, -held_h * PISTOL_BODY_H_RATIO * 0.5),
-		Vector2(held_w * PISTOL_BODY_W_RATIO, held_h * PISTOL_BODY_H_RATIO)
-	)
-	var barrel_rect: Rect2 = Rect2(
-		Vector2(held_w * PISTOL_BARREL_X, held_h * PISTOL_BARREL_Y),
-		Vector2(held_w * PISTOL_BARREL_W_RATIO, held_h * PISTOL_BARREL_H_RATIO)
+	var gun_rect := Rect2(
+		Vector2(-held_w * 0.2, -held_h * 0.22),
+		Vector2(held_w * 0.95, held_h * 0.48)
 	)
 	host.draw_set_transform_matrix(walk_xf * Transform2D(angle, grip))
-	host.draw_rect(body_rect, item_color)
-	host.draw_rect(body_rect, outline, false, 2.0)
-	host.draw_rect(barrel_rect, item_color.darkened(0.08))
-	host.draw_rect(barrel_rect, outline, false, 2.0)
+	host.draw_texture_rect(ArtLibrary.PISTOL, gun_rect, false, item_color)
 	host.draw_set_transform_matrix(walk_xf)
 	var label_rect: Rect2 = Rect2(
 		grip - Vector2(held_w * 0.5, held_h * 0.5),
@@ -187,7 +178,7 @@ func _draw_held_weapon(depth: float, body_h: float, body_w: float, outline: Colo
 	_draw_held_item_label(label_rect)
 
 
-func _draw_held_orbital_computer(depth: float, body_h: float, body_w: float, outline: Color) -> void:
+func _draw_held_orbital_computer(depth: float, body_h: float, body_w: float, _outline: Color) -> void:
 	var held_w: float = lerpf(HELD_W_NEAR, HELD_W_FAR, depth) * SPY_SCALE
 	var held_h: float = lerpf(HELD_H_NEAR, HELD_H_FAR, depth) * SPY_SCALE
 	var grip: Vector2 = Vector2(body_w * 0.58, -body_h * 0.02)
@@ -196,14 +187,7 @@ func _draw_held_orbital_computer(depth: float, body_h: float, body_w: float, out
 		grip - Vector2(held_w * 0.42, held_h * 0.34),
 		Vector2(held_w * 0.84, held_h * 0.68)
 	)
-	var screen_rect: Rect2 = Rect2(
-		base_rect.position + Vector2(held_w * 0.08, held_h * 0.08),
-		Vector2(held_w * 0.68, held_h * 0.36)
-	)
-	host.draw_rect(base_rect, item_color.darkened(0.12))
-	host.draw_rect(base_rect, outline, false, 2.0)
-	host.draw_rect(screen_rect, Color(0.08, 0.12, 0.16, 0.95))
-	host.draw_rect(screen_rect, Color("#c03030"), false, 1.5)
+	host.draw_texture_rect(ArtLibrary.LAPTOP, base_rect, false, item_color)
 	_draw_held_item_label(base_rect)
 
 

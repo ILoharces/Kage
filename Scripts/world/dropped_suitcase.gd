@@ -10,6 +10,7 @@ var stored_items: Array[int] = []
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	collision_layer = 8
 	collision_mask = 0
 	monitoring = false
@@ -32,17 +33,9 @@ func setup(owner_id: int, items: Array[int]) -> void:
 
 
 func _draw() -> void:
-	var case_col: Color = ItemDB.ITEM_COLORS.get(ItemDB.ItemId.SUITCASE, Color.CYAN)
-	draw_rect(Rect2(-14.0, -10.0, 28.0, 20.0), case_col)
-	draw_rect(Rect2(-14.0, -10.0, 28.0, 20.0), ItemDB.COLOR_OUTLINE, false, 2.0)
-	var handle_pts: PackedVector2Array = PackedVector2Array([
-		Vector2(-6.0, -10.0),
-		Vector2(6.0, -10.0),
-		Vector2(6.0, -14.0),
-		Vector2(-6.0, -14.0),
-	])
-	draw_colored_polygon(handle_pts, case_col.darkened(0.15))
-	draw_polyline(handle_pts + PackedVector2Array([handle_pts[0]]), ItemDB.COLOR_OUTLINE, 2.0, true)
+	var icon: Texture2D = ArtLibrary.item_texture(ItemDB.ItemId.SUITCASE)
+	if icon != null:
+		draw_texture_rect(icon, Rect2(-14.0, -14.0, 28.0, 28.0), false)
 	var label: String = "Maletin"
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = 10

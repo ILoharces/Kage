@@ -8,6 +8,7 @@ var ammo_count: int = -1
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_to_group("dropped_weapon")
 	add_to_group("ground_pickup")
 	collision_layer = 8
@@ -28,8 +29,7 @@ func _draw() -> void:
 		return
 	var weapon: WeaponData = WeaponDB.get_weapon(weapon_id)
 	var col: Color = weapon.hold_color if weapon != null else Color("#9e9e9e")
-	draw_circle(Vector2.ZERO, 10.0, col)
-	draw_arc(Vector2.ZERO, 10.0, 0.0, TAU, 12, ItemDB.COLOR_OUTLINE, 2.0, false)
+	draw_texture_rect(ArtLibrary.PISTOL, Rect2(-16.0, -8.0, 32.0, 16.0), false, col)
 	var label: String = WeaponDB.get_weapon_name(weapon_id)
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = 11

@@ -7,6 +7,7 @@ var item_id: int = -1
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_to_group("dropped_item")
 	add_to_group("ground_pickup")
 	collision_layer = 8
@@ -25,9 +26,9 @@ func _ready() -> void:
 func _draw() -> void:
 	if item_id < 0:
 		return
-	var col: Color = ItemDB.ITEM_COLORS.get(item_id, Color.WHITE)
-	draw_circle(Vector2.ZERO, 10.0, col)
-	draw_arc(Vector2.ZERO, 10.0, 0.0, TAU, 12, ItemDB.COLOR_OUTLINE, 2.0, false)
+	var icon: Texture2D = ArtLibrary.item_texture(item_id)
+	if icon != null:
+		draw_texture_rect(icon, Rect2(-12.0, -12.0, 24.0, 24.0), false)
 	var label: String = ItemDB.get_item_name(item_id)
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = 11
