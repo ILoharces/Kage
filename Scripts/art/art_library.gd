@@ -1,7 +1,7 @@
 class_name ArtLibrary
 extends RefCounted
 
-## Texturas de pixel art. Se regeneran con tools/generate_pixel_art.gd.
+## Placeholders de color plano. Sustituye cada PNG por tu sprite, con el mismo nombre.
 
 const TILE: float = 32.0
 const FLOOR_EXIT_TINT := Color(0.72, 1.0, 0.78)

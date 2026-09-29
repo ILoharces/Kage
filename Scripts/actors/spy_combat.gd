@@ -159,8 +159,8 @@ func _enter_death_state() -> void:
 	host.interaction.close_open_furniture()
 	host.collision_layer = 0
 	host.collision_mask = 0
-	host.alive_modulate = Color(0.35, 0.35, 0.35, 0.55)
-	host.modulate = host.alive_modulate
+	# El traje ya va en la textura. Este tinte solo dura mientras esta muerto.
+	host.modulate = Color(0.35, 0.35, 0.35, 0.55)
 	host.queue_redraw()
 
 

@@ -337,6 +337,13 @@ func clamp_local_position(local_pos: Vector2) -> Vector2:
 	return RoomPerspective.clamp_to_floor(local_pos, get_room_w(), get_room_h())
 
 
+# El origen del espía cuenta como dentro si cae en el suelo o a pocos pixeles del borde.
+func contains_world_point(world_pos: Vector2, margin: float = 64.0) -> bool:
+	var local_pos: Vector2 = world_pos - global_position
+	var clamped: Vector2 = clamp_local_position(local_pos)
+	return local_pos.distance_squared_to(clamped) <= margin * margin
+
+
 func get_depth_at_local(local_pos: Vector2) -> float:
 	return RoomPerspective.depth_from_y(local_pos.y, get_room_h())
 

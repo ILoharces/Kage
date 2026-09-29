@@ -5,6 +5,8 @@ extends RefCounted
 
 const SPEED: float = 200.0
 const WALK_PHASE_DECAY: float = 10.0
+# Por encima de esto el espia esta en otra sala, no pegado a la pared.
+const ROOM_CLAMP_MAX_PULL: float = 512.0
 
 var host: SpyBase = null
 var _passage_entry_blocks: Dictionary = {}
@@ -28,10 +30,7 @@ func physics_process(delta: float) -> void:
 		_update_walk_phase(delta)
 		host.update_body_collider()
 		host.move_and_slide()
-		if host.current_room != null:
-			var local_pos: Vector2 = host.global_position - host.current_room.global_position
-			var clamped: Vector2 = host.current_room.clamp_local_position(local_pos)
-			host.global_position = host.current_room.global_position + clamped
+		_constrain_to_current_room()
 		host.queue_redraw()
 		return
 	if host.stun_timer > 0.0:
@@ -51,10 +50,8 @@ func physics_process(delta: float) -> void:
 	_update_walk_phase(delta)
 	host.update_body_collider()
 	host.move_and_slide()
+	_constrain_to_current_room()
 	if host.current_room != null:
-		var local_pos: Vector2 = host.global_position - host.current_room.global_position
-		var clamped: Vector2 = host.current_room.clamp_local_position(local_pos)
-		host.global_position = host.current_room.global_position + clamped
 		host.current_room.poll_spy_passages(host)
 	host.queue_redraw()
 
@@ -105,6 +102,27 @@ func _update_draw_order() -> void:
 
 func set_current_room(room: Room) -> void:
 	host.current_room = room
+
+
+func _constrain_to_current_room() -> void:
+	if host.current_room == null:
+		return
+	var local_pos: Vector2 = host.global_position - host.current_room.global_position
+	var clamped: Vector2 = host.current_room.clamp_local_position(local_pos)
+	if local_pos.distance_squared_to(clamped) > ROOM_CLAMP_MAX_PULL * ROOM_CLAMP_MAX_PULL:
+		_recover_current_room_from_position()
+		return
+	host.global_position = host.current_room.global_position + clamped
+
+
+func _recover_current_room_from_position() -> void:
+	var mansion: Mansion = host.get_parent() as Mansion
+	if mansion == null:
+		return
+	var found: Room = mansion.room_containing_point(host.global_position)
+	if found == null or found == host.current_room:
+		return
+	host.set_current_room(found)
 
 
 func teleport_to_room(room: Room, entry_dir: String, from_room: Room = null) -> void:
