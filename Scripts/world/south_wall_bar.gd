@@ -51,9 +51,10 @@ func _rebuild_polygons() -> void:
 func _draw() -> void:
 	if _local_bar.size() < 3:
 		return
-	var wall_col: Color = ItemDB.COLOR_WALL
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	var outline: Color = ItemDB.COLOR_OUTLINE
-	draw_colored_polygon(_local_bar, wall_col)
+	ArtDraw.tiled(self, _local_bar, ArtLibrary.WALL, ArtLibrary.TILE, Color.WHITE, position)
 	draw_polyline(_local_bar + PackedVector2Array([_local_bar[0]]), outline, OUTLINE_W, true)
 	if _local_gap.size() >= 3:
 		draw_colored_polygon(_local_gap, ItemDB.COLOR_DOOR_GAP)

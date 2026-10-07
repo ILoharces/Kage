@@ -19,7 +19,6 @@ Proyecto Godot 4.6, duelo 1v1 estilo Spy vs Spy. Mapas editables en JSON (`user:
 | `GameSettings` | Opciones persistentes (`use_ai_default`, modos de control por jugador) |
 | `InputBindings` | Mapa fijo de acciones; aplica solo el slot del modo elegido (teclado+ratón o mando) |
 | `DisplayConfig` | Tamaño habitación, panel stats, zoom |
-| `DebugFlags` | Toggles F1–F8 |
 
 ## Carpetas
 
@@ -105,6 +104,8 @@ Reglas:
 - **Contra IA**: `InputBindings.set_ai_adaptive_controls(true)` al iniciar partida; P1 cambia entre teclado+ratón y mando según el último dispositivo usado (sin guardar en disco). El modo de J1 en Ajustes solo fija el valor inicial.
 
 Persistencia: `user://game_settings.cfg` sección `controls` (`p1_control_mode`, `p2_control_mode`). Los bindings fijos viven en código (`InputBindings._build_default_bindings()`).
+
+Movimiento y apuntado con mando respetan la inclinación del stick (no van siempre a fondo). Interactuar, trampas y disparo se leen por polling en `Player._process`, porque el espía vive dentro de un `SubViewport`.
 
 ## Señales globales útiles
 

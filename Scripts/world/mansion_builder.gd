@@ -219,10 +219,11 @@ func _spawn_weapon_boxes(pool_rooms: Array[Room]) -> void:
 	for i: int in weapon_rooms.size():
 		var room: Room = weapon_rooms[i]
 		var weapon_id: StringName = weapon_ids[i] if i < weapon_ids.size() else GameState.PLACEHOLDER_PISTOL_ID
-		var used_positions: Array[Vector2] = []
+		var used_positions: Array[Dictionary] = []
 		for furn_node: Node in room.furniture_list:
-			if furn_node is Node2D:
-				used_positions.append((furn_node as Node2D).position)
+			if furn_node is Furniture:
+				var placed: Furniture = furn_node as Furniture
+				used_positions.append({"pos": placed.position, "kind": placed.kind})
 		var pos: Vector2 = FurniturePlacement.pick_position(
 			room, ItemDB.FurnitureKind.WEAPON_BOX, used_positions
 		)

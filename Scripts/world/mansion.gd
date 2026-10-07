@@ -111,13 +111,24 @@ func get_room_at(gp: Vector2i) -> Room:
 
 func _on_room_spy_entered(spy: Node, room: Room) -> void:
 	var spy_base: SpyBase = spy as SpyBase
-	if spy_base == null:
+	if spy_base == null or room == null:
+		return
+	# El cuerpo fisico puede avisar la sala equivocada un frame (respawn, muerte).
+	# Si el nodo no esta en ese suelo, ignorarlo evita el teletransporte en bucle.
+	if not room.contains_world_point(spy_base.global_position):
 		return
 	spy_base.set_current_room(room)
 	if spy_base == player:
 		player_room_changed.emit(room)
 	elif spy_base == ai_spy or spy_base == player2:
 		ai_room_changed.emit(room)
+
+
+func room_containing_point(world_pos: Vector2) -> Room:
+	for room: Room in rooms:
+		if room.contains_world_point(world_pos):
+			return room
+	return null
 
 
 func get_bottom_spy() -> SpyBase:

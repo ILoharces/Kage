@@ -145,7 +145,7 @@ func respawn_in_room(room: Room) -> void:
 	is_alive = true
 	collision_layer = 2
 	collision_mask = 3
-	alive_modulate = ItemDB.SPY_COLORS.get(spy_id, Color.WHITE) as Color
+	alive_modulate = Color.WHITE
 	modulate = alive_modulate
 	velocity = Vector2.ZERO
 	stun_timer = 0.0

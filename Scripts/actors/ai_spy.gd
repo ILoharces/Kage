@@ -6,7 +6,7 @@ class_name AiSpy
 
 enum State { SEARCH, RETURN, PLACE_TRAP }
 
-const FURNITURE_REACH: float = 80.0
+const FURNITURE_REACH: float = 72.0
 const DOOR_REACH: float = 48.0
 const TRAP_PLACE_CHANCE: float = 0.35
 
@@ -110,7 +110,7 @@ func _search_step() -> Vector2:
 			return Vector2.ZERO
 		var to_furn: Vector2 = target_furniture.global_position - global_position
 		if to_furn.length() <= FURNITURE_REACH:
-			interact_with_nearby()
+			interaction.use_furniture(target_furniture)
 			return Vector2.ZERO
 		return to_furn.normalized()
 	return _navigate_step()
@@ -163,7 +163,7 @@ func _place_trap_step() -> Vector2:
 	var furn: Furniture = target_node as Furniture
 	if furn != null:
 		if not furn.is_raised_open():
-			interact_with_nearby()
+			interaction.use_furniture(furn)
 		if furn.is_raised_open() and furn.is_empty() and try_place_trap(trap_id):
 			place_trap_cooldown = 5.0
 	ai_state = State.SEARCH

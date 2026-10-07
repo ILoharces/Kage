@@ -9,8 +9,9 @@ enum AimMode {
 	ORBIT,
 }
 
-const VIRTUAL_CURSOR_SPEED: float = 900.0
-const STICK_DEADZONE: float = 0.35
+const VIRTUAL_CURSOR_SPEED: float = 860.0
+const STICK_DEADZONE: float = 0.18
+const STICK_RESPONSE: float = 1.35
 const ORBIT_SCREEN_RADIUS: float = 128.0
 
 var spy_id: int = 0
@@ -130,10 +131,13 @@ func _try_toggle_aim_mode(spy: SpyBase, resolver: AimResolver) -> void:
 
 
 func _update_virtual_cursor(delta: float, bounds: Rect2, aim_vec: Vector2) -> void:
-	if aim_vec.length_squared() < STICK_DEADZONE * STICK_DEADZONE:
+	var magnitude: float = aim_vec.length()
+	if magnitude < STICK_DEADZONE:
 		return
+	var strength: float = clampf((magnitude - STICK_DEADZONE) / (1.0 - STICK_DEADZONE), 0.0, 1.0)
+	strength = pow(strength, STICK_RESPONSE)
 	var next_virtual: Vector2 = _clamp_to_bounds(
-		screen_pos + aim_vec.normalized() * VIRTUAL_CURSOR_SPEED * delta,
+		screen_pos + aim_vec.normalized() * VIRTUAL_CURSOR_SPEED * strength * delta,
 		bounds
 	)
 	if next_virtual != screen_pos:

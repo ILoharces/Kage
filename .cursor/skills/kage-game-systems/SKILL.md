@@ -84,7 +84,8 @@ Los espías (`Player`, `Player2`) están dentro de `PlayerViewport/Mansion`. **`
 
 - **Movimiento**: ya usa polling (`Input.get_vector` en `_physics_process`) — correcto.
 - **Disparo**: `Input.is_action_just_pressed(_get_fire_action())` en `Player._process`; P2 sobreescribe `_get_fire_action()` → `"p2_fire_weapon"`.
-- No mover disparo de vuelta a `_unhandled_input` sin resolver enrutado de input al SubViewport.
+- **Interactuar, colocar y ciclar trampa**: mismo polling en `Player._poll_world_input()`. E elige el objetivo más cercano (puerta, objeto o mueble).
+- No mover estas acciones de vuelta a `_unhandled_input` sin resolver enrutado de input al SubViewport.
 
 ## Espías: visual, hitbox y animación
 

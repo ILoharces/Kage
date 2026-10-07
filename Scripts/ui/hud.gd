@@ -7,6 +7,7 @@ const STATS_PAD: float = 8.0
 
 var player_panel: SpyHudPanel
 var ai_panel: SpyHudPanel
+var controls_guide: ControlsGuide
 var message_label: Label
 var bound_player: Player = null
 var bound_opponent: SpyBase = null
@@ -39,6 +40,12 @@ func relayout_for_display() -> void:
 	var stats_left: float = stats_rect.position.x + STATS_PAD
 	var stats_w: float = stats_rect.size.x - STATS_PAD * 2.0
 	var mid_y: float = metrics.mid_y
+	var central: Rect2 = metrics.central_panel_rect()
+	var guide_pad: float = STATS_PAD
+	controls_guide.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	controls_guide.position = central.position + Vector2(guide_pad, guide_pad)
+	controls_guide.size = central.size - Vector2(guide_pad * 2.0, guide_pad * 2.0)
+	controls_guide.refresh()
 	player_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	player_panel.position = Vector2(stats_left, 0.0)
 	player_panel.size = Vector2(stats_w, mid_y)
@@ -94,6 +101,9 @@ func _build_ui() -> void:
 	ai_panel.setup(ItemDB.SpyId.PLAYER2, false)
 	ai_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ai_panel)
+	controls_guide = ControlsGuide.new()
+	controls_guide.name = "ControlsGuide"
+	add_child(controls_guide)
 	message_label = Label.new()
 	message_label.add_theme_font_size_override("font_size", 16)
 	message_label.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT)

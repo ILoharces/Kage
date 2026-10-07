@@ -13,15 +13,37 @@ func _init(p_host: SpyBase) -> void:
 func interact_with_nearby() -> bool:
 	if not host.is_alive or host.is_stunned() or host.is_searching() or host.orbital_targeting:
 		return false
-	if host.nearby_door != null and is_instance_valid(host.nearby_door):
-		host.nearby_door.try_toggle_for_spy(host.spy_id)
+	var target: Node = _closest_interact_target()
+	if target == null:
+		return false
+	if target is Door:
+		(target as Door).try_toggle_for_spy(host.spy_id)
 		return true
-	var pickup: Node = _find_ground_pickup_target()
-	if pickup != null:
-		host.nearby_pickup = pickup
-		if _try_pickup_nearby_ground():
-			return true
-	return false
+	if target.is_in_group("ground_pickup"):
+		host.nearby_pickup = target
+		return _try_pickup_nearby_ground()
+	var furn: Furniture = target as Furniture
+	if furn == null:
+		return false
+	return use_furniture(furn)
+
+
+func use_furniture(furn: Furniture) -> bool:
+	if not host.is_alive or host.is_stunned() or host.is_searching() or host.orbital_targeting:
+		return false
+	if furn == null or not is_instance_valid(furn):
+		return false
+	if furn.is_raised_open():
+		close_furniture(furn)
+		return true
+	close_open_furniture()
+	furn.raise_open(host)
+	host.open_furniture = furn
+	host.nearby_furniture = furn
+	host.search_started.emit(furn)
+	_resolve_furniture_interaction(furn)
+	host.search_finished.emit(furn)
+	return true
 
 
 func try_place_trap(trap_id: int) -> bool:
@@ -72,6 +94,32 @@ func cancel_search() -> void:
 
 func refresh_hands_from_inventory() -> void:
 	_refresh_hands_from_inventory()
+
+
+func _closest_interact_target() -> Node:
+	var best: Node = null
+	var best_dist: float = INF
+	if host.nearby_door != null and is_instance_valid(host.nearby_door):
+		best = host.nearby_door
+		best_dist = _distance_to(host.nearby_door)
+	var pickup: Node = _find_ground_pickup_target()
+	if pickup != null:
+		var pickup_dist: float = _distance_to(pickup)
+		if best == null or pickup_dist < best_dist:
+			best = pickup
+			best_dist = pickup_dist
+	if host.nearby_furniture != null and is_instance_valid(host.nearby_furniture):
+		var furn_dist: float = _distance_to(host.nearby_furniture)
+		if best == null or furn_dist < best_dist:
+			best = host.nearby_furniture
+	return best
+
+
+func _distance_to(node: Node) -> float:
+	var body: Node2D = node as Node2D
+	if body == null:
+		return INF
+	return host.global_position.distance_to(body.global_position)
 
 
 func _find_ground_pickup_target() -> Node:

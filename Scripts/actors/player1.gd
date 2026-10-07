@@ -16,12 +16,13 @@ func _ready() -> void:
 func _compute_input_vector() -> Vector2:
 	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
 		return Vector2.ZERO
-	return Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	return Input.get_vector("move_left", "move_right", "move_up", "move_down", 0.16)
 
 
 func _process(delta: float) -> void:
 	_update_aim_controller(delta)
 	_poll_combat_input()
+	_poll_world_input()
 
 
 func _poll_combat_input() -> void:
@@ -44,6 +45,33 @@ func _poll_combat_input() -> void:
 
 func _get_fire_action() -> String:
 	return "fire_weapon"
+
+
+func _get_interact_action() -> String:
+	return "interact"
+
+
+func _get_place_trap_action() -> String:
+	return "place_trap"
+
+
+func _get_next_trap_action() -> String:
+	return "next_trap"
+
+
+func _poll_world_input() -> void:
+	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
+		return
+	if orbital_targeting:
+		return
+	if Input.is_action_just_pressed(_get_interact_action()):
+		interact_with_nearby()
+	elif Input.is_action_just_pressed(_get_place_trap_action()):
+		var trap_id: int = held.get_trap_id() if held != null else -1
+		if trap_id >= 0:
+			try_place_trap(trap_id)
+	elif Input.is_action_just_pressed(_get_next_trap_action()):
+		_cycle_held_trap()
 
 
 func _update_aim_controller(delta: float) -> void:
@@ -77,21 +105,6 @@ func _update_aim_direction(main_node: Main, controller: AimController) -> void:
 		return
 	aim_direction = next_dir
 	queue_redraw()
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
-		return
-	if orbital_targeting:
-		return
-	if event.is_action_pressed("interact"):
-		interact_with_nearby()
-	elif event.is_action_pressed("place_trap"):
-		var trap_id: int = held.get_trap_id() if held != null else -1
-		if trap_id >= 0:
-			try_place_trap(trap_id)
-	elif event.is_action_pressed("next_trap"):
-		_cycle_held_trap()
 
 
 func set_input_blocked(value: bool) -> void:
