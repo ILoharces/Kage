@@ -141,8 +141,9 @@ func _draw_held_item(depth: float, body_h: float, body_w: float, outline: Color,
 	if host.held.is_holding_weapon():
 		_draw_held_weapon(depth, body_h, body_w, outline, walk_xf)
 		return
-	var held_w: float = lerpf(HELD_W_NEAR, HELD_W_FAR, depth) * SPY_SCALE
-	var held_h: float = lerpf(HELD_H_NEAR, HELD_H_FAR, depth) * SPY_SCALE
+	var ratio: Vector2 = PropMetrics.held_ratio(host.held)
+	var held_w: float = body_w * 2.0 * ratio.x
+	var held_h: float = body_h * ratio.y
 	var center: Vector2 = Vector2(body_w * 0.72, -body_h * 0.05)
 	var rect: Rect2 = Rect2(center - Vector2(held_w * 0.5, held_h * 0.5), Vector2(held_w, held_h))
 	var icon: Texture2D = ArtLibrary.icon_for_held(host.held)

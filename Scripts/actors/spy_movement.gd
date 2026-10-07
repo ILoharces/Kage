@@ -3,7 +3,9 @@ extends RefCounted
 
 # Movimiento, pasajes entre habitaciones y orden de dibujo.
 
-const SPEED: float = 200.0
+const SPEED: float = 245.0
+const ACCEL: float = 2100.0
+const FRICTION: float = 2800.0
 const WALK_PHASE_DECAY: float = 10.0
 # Por encima de esto el espia esta en otra sala, no pegado a la pared.
 const ROOM_CLAMP_MAX_PULL: float = 512.0
@@ -45,7 +47,9 @@ func physics_process(delta: float) -> void:
 	else:
 		host.modulate = host.alive_modulate
 		var input_vector: Vector2 = host._compute_input_vector()
-		host.velocity = input_vector.normalized() * SPEED if input_vector.length() > 0.01 else Vector2.ZERO
+		var desired: Vector2 = input_vector * SPEED
+		var rate: float = ACCEL if input_vector.length_squared() > 0.0004 else FRICTION
+		host.velocity = host.velocity.move_toward(desired, rate * delta)
 	_update_draw_order()
 	_update_walk_phase(delta)
 	host.update_body_collider()

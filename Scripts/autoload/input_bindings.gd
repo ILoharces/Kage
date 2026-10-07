@@ -157,6 +157,40 @@ func get_control_scheme_summary(player_index: int) -> String:
 			return ""
 
 
+func get_controls_guide(player_index: int) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	rows.append({"button": _move_button_label(player_index), "action": "Mover"})
+	var aim_button: String = _aim_button_label(player_index)
+	if aim_button.is_empty():
+		rows.append({"button": "—", "action": "Apuntar"})
+	else:
+		rows.append({"button": aim_button, "action": "Apuntar"})
+	_append_guide_row(rows, player_index, "fire_weapon", "Disparar")
+	if get_control_mode(player_index) == PlayerControlMode.GAMEPAD:
+		_append_guide_row(rows, player_index, "aim_mode_toggle", "Modo mirilla")
+	_append_guide_row(rows, player_index, "interact", "Interactuar")
+	_append_guide_row(rows, player_index, "place_trap", "Colocar trampa")
+	_append_guide_row(rows, player_index, "next_trap", "Cambiar trampa")
+	_append_guide_row(rows, player_index, "trapulator", "Trapulator")
+	_append_guide_row(rows, player_index, "toggle_map", "Mapa")
+	_append_guide_row(rows, player_index, "pause_menu", "Pausa")
+	return rows
+
+
+func get_binding_short_label(player_index: int, action: String) -> String:
+	var full: String = get_binding_label_for_player(player_index, action)
+	if full == "Clic izquierdo":
+		return "Clic izq."
+	if full == "Stick L (click)":
+		return "L3"
+	if full == "Stick R (click)":
+		return "R3"
+	var slash: int = full.find(" / ")
+	if slash > 0:
+		return full.substr(0, slash)
+	return full
+
+
 func get_binding_label_for_player(player_index: int, action: String) -> String:
 	if action.is_empty() or is_menu_action(action):
 		return "—"
@@ -252,6 +286,42 @@ func apply_action(action: String) -> void:
 	var event: InputEvent = slots.get(slot) as InputEvent
 	if event != null:
 		InputMap.action_add_event(action, event.duplicate())
+
+
+func _move_button_label(player_index: int) -> String:
+	if get_control_mode(player_index) == PlayerControlMode.GAMEPAD:
+		return "Stick L"
+	var up: String = get_binding_short_label(player_index, _action_for_player(player_index, "move_up"))
+	var left: String = get_binding_short_label(player_index, _action_for_player(player_index, "move_left"))
+	var down: String = get_binding_short_label(player_index, _action_for_player(player_index, "move_down"))
+	var right: String = get_binding_short_label(player_index, _action_for_player(player_index, "move_right"))
+	if up == "W" and left == "A" and down == "S" and right == "D":
+		return "WASD"
+	if up == "Up" and left == "Left" and down == "Down" and right == "Right":
+		return "Flechas"
+	return "%s %s %s %s" % [up, left, down, right]
+
+
+func _aim_button_label(player_index: int) -> String:
+	var mode: PlayerControlMode = get_control_mode(player_index)
+	if mode == PlayerControlMode.GAMEPAD:
+		return "Stick R"
+	if mode == PlayerControlMode.KEYBOARD_MOUSE and player_index <= 0:
+		return "Ratón"
+	return ""
+
+
+func _append_guide_row(rows: Array[Dictionary], player_index: int, suffix: String, action_label: String) -> void:
+	var button: String = get_binding_short_label(player_index, _action_for_player(player_index, suffix))
+	if button.is_empty() or button == "—":
+		return
+	rows.append({"button": button, "action": action_label})
+
+
+func _action_for_player(player_index: int, suffix: String) -> String:
+	if player_index <= 0:
+		return suffix
+	return "p2_" + suffix
 
 
 func _on_control_modes_changed() -> void:

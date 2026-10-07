@@ -106,6 +106,8 @@ Reglas:
 
 Persistencia: `user://game_settings.cfg` sección `controls` (`p1_control_mode`, `p2_control_mode`). Los bindings fijos viven en código (`InputBindings._build_default_bindings()`).
 
+Movimiento y apuntado con mando respetan la inclinación del stick (no van siempre a fondo). Interactuar, trampas y disparo se leen por polling en `Player._process`, porque el espía vive dentro de un `SubViewport`.
+
 ## Señales globales útiles
 
 - `GameState.map_overlay_close_requested` — cerrar minimapa sin acoplar UI a `Main`

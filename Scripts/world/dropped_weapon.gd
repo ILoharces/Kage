@@ -17,8 +17,9 @@ func _ready() -> void:
 	monitorable = true
 	z_index = int(position.y)
 	var col: CollisionShape2D = CollisionShape2D.new()
+	var size: Vector2 = PropMetrics.weapon_ground_size(PropMetrics.depth_of(self))
 	var sh: CircleShape2D = CircleShape2D.new()
-	sh.radius = 18.0
+	sh.radius = PropMetrics.pickup_radius(size)
 	col.shape = sh
 	add_child(col)
 	queue_redraw()
@@ -27,16 +28,17 @@ func _ready() -> void:
 func _draw() -> void:
 	if weapon_id.is_empty():
 		return
+	var size: Vector2 = PropMetrics.weapon_ground_size(PropMetrics.depth_of(self))
 	var weapon: WeaponData = WeaponDB.get_weapon(weapon_id)
 	var col: Color = weapon.hold_color if weapon != null else Color("#9e9e9e")
-	draw_texture_rect(ArtLibrary.PISTOL, Rect2(-16.0, -8.0, 32.0, 16.0), false, col)
+	draw_texture_rect(ArtLibrary.PISTOL, Rect2(-size * 0.5, size), false, col)
 	var label: String = WeaponDB.get_weapon_name(weapon_id)
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = 11
 	var text_w: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	draw_string(
 		font,
-		Vector2(-text_w * 0.5, -22.0),
+		Vector2(-text_w * 0.5, -size.y * 0.5 - 8.0),
 		label,
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,

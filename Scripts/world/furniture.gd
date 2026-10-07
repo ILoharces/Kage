@@ -9,10 +9,9 @@ signal item_taken(item_id: int, spy: SpyBase)
 signal trap_triggered(trap_id: int, spy: SpyBase)
 signal opened_changed(is_open: bool)
 
-const SIZE: Vector2 = Vector2(40, 35)
-const INTERACT_PADDING: float = 14.0
-const INSPECT_LIFT_PX: float = 14.0
-const INSPECT_SLIDE_PX: float = 22.0
+const INTERACT_PADDING: float = 20.0
+const INSPECT_LIFT_PX: float = 20.0
+const INSPECT_SLIDE_PX: float = 28.0
 
 enum State { EMPTY, HAS_ITEM, HAS_WEAPON, HAS_TRAP }
 
@@ -27,6 +26,8 @@ var owning_room: Room = null
 var timed_bomb_timer: Timer = null
 var is_open: bool = false
 var _inspect_visual_offset: Vector2 = Vector2.ZERO
+var _body_shape: RectangleShape2D = null
+var _interact_shape: RectangleShape2D = null
 
 
 func _ready() -> void:
@@ -34,6 +35,7 @@ func _ready() -> void:
 	add_to_group("furniture")
 	_build_collider()
 	_build_interact_zone()
+	_sync_collision_to_metrics()
 	queue_redraw()
 
 
@@ -73,36 +75,40 @@ func _painting_slide_offset(opener: Node2D) -> Vector2:
 	return Vector2(INSPECT_SLIDE_PX * dir, 0.0)
 
 
+func _depth() -> float:
+	if owning_room == null:
+		return 0.65
+	return owning_room.get_depth_at_local(position)
+
+
 func _draw() -> void:
-	var depth: float = 0.55
-	if owning_room != null:
-		depth = owning_room.get_depth_at_local(position)
-	var w: float = lerpf(SIZE.x * 0.62, SIZE.x, depth)
-	var h: float = lerpf(SIZE.y * 0.5, SIZE.y, depth)
+	var vis: Vector2 = PropMetrics.furniture_visual(kind, _depth())
+	var foot: Vector2 = PropMetrics.furniture_footprint(kind, _depth())
 	var offset: Vector2 = _inspect_visual_offset
+	var bottom: float = foot.y * 0.5
+	var rect := Rect2(Vector2(-vis.x * 0.5, bottom - vis.y) + offset, vis)
 	var tex: Texture2D = ArtLibrary.furniture_texture(kind)
-	var rect := Rect2(Vector2(-w * 0.5, -h * 0.55) + offset, Vector2(w, h))
 	if tex != null:
 		draw_texture_rect(tex, rect, false)
-	_draw_kind_label(w, h, offset)
+	_draw_kind_label(rect)
 	if is_open and state == State.HAS_WEAPON and not hidden_weapon_id.is_empty():
-		_draw_hidden_weapon(w, h, offset)
+		_draw_hidden_weapon(rect)
 
 
-func _draw_hidden_weapon(_w: float, h: float, offset: Vector2) -> void:
+func _draw_hidden_weapon(rect: Rect2) -> void:
 	var weapon: WeaponData = WeaponDB.get_weapon(hidden_weapon_id)
 	var col: Color = weapon.hold_color if weapon != null else Color("#9e9e9e")
-	var center: Vector2 = Vector2(0.0, -h * 0.08) + offset
+	var center: Vector2 = rect.get_center()
 	draw_circle(center, 7.0, col)
 	draw_arc(center, 7.0, 0.0, TAU, 12, ItemDB.COLOR_OUTLINE, 1.5, false)
 
 
-func _draw_kind_label(w: float, h: float, offset: Vector2) -> void:
+func _draw_kind_label(rect: Rect2) -> void:
 	var label: String = ItemDB.get_furniture_name(kind)
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = 11
 	var text_size: Vector2 = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	var base: Vector2 = Vector2(-text_size.x * 0.5, h * 0.55 + 2.0) + offset
+	var base: Vector2 = Vector2(rect.get_center().x - text_size.x * 0.5, rect.end.y + 12.0)
 	var shadow: Color = Color(0.0, 0.0, 0.0, 0.85)
 	var text_col: Color = Color(0.98, 0.98, 0.98, 0.95)
 	draw_string(font, base + Vector2(1.0, 1.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, shadow)
@@ -113,10 +119,10 @@ func _build_collider() -> void:
 	var body: StaticBody2D = StaticBody2D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
-	var shape: RectangleShape2D = RectangleShape2D.new()
-	shape.size = SIZE
+	_body_shape = RectangleShape2D.new()
+	_body_shape.size = Vector2(32, 20)
 	var col: CollisionShape2D = CollisionShape2D.new()
-	col.shape = shape
+	col.shape = _body_shape
 	body.add_child(col)
 	add_child(body)
 
@@ -128,12 +134,20 @@ func _build_interact_zone() -> void:
 	area.collision_mask = 0
 	area.monitoring = false
 	area.monitorable = true
-	var shape: RectangleShape2D = RectangleShape2D.new()
-	shape.size = SIZE + Vector2.ONE * INTERACT_PADDING * 2.0
+	_interact_shape = RectangleShape2D.new()
+	_interact_shape.size = Vector2(48, 36)
 	var col: CollisionShape2D = CollisionShape2D.new()
-	col.shape = shape
+	col.shape = _interact_shape
 	area.add_child(col)
 	add_child(area)
+
+
+func _sync_collision_to_metrics() -> void:
+	var foot: Vector2 = PropMetrics.furniture_footprint(kind, _depth())
+	if _body_shape != null:
+		_body_shape.size = foot
+	if _interact_shape != null:
+		_interact_shape.size = foot + Vector2.ONE * INTERACT_PADDING * 2.0
 
 
 func hide_item(item_id: int) -> void:

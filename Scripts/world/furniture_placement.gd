@@ -11,7 +11,6 @@ const WE_CORRIDOR_HALF_WIDTH: float = 52.0
 const WE_CORRIDOR_V_HALF: float = 0.11
 const WE_CORRIDOR_U_MIN: float = 0.06
 const WE_CORRIDOR_U_MAX: float = 0.94
-const MIN_FURNITURE_SEPARATION: float = 56.0
 const N_DOOR_WALL_CLEARANCE: float = 95.0
 const DOOR_UV_U_MARGIN: float = 0.08
 const DOOR_UV_V_MARGIN: float = 0.2
@@ -30,7 +29,7 @@ static func spawn_for_room(room: Room) -> Array[Dictionary]:
 	var kinds: Array[int] = ItemDB.get_decor_furniture_kinds()
 	kinds.shuffle()
 	var placements: Array[Dictionary] = []
-	var used_positions: Array[Vector2] = []
+	var used_positions: Array[Dictionary] = []
 	for kind: int in kinds:
 		if placements.size() >= count:
 			break
@@ -38,11 +37,11 @@ static func spawn_for_room(room: Room) -> Array[Dictionary]:
 		if pos == Vector2.INF:
 			continue
 		placements.append({"kind": kind, "position": pos})
-		used_positions.append(pos)
+		used_positions.append({"pos": pos, "kind": kind})
 	return placements
 
 
-static func pick_position(room: Room, kind: int, used_positions: Array[Vector2]) -> Vector2:
+static func pick_position(room: Room, kind: int, used_positions: Array[Dictionary]) -> Vector2:
 	var candidates: Array[Vector2] = _candidates_for_kind(room, kind)
 	candidates.shuffle()
 	for pos: Vector2 in candidates:
@@ -84,16 +83,18 @@ static func _is_valid_position(
 	room: Room,
 	pos: Vector2,
 	kind: int,
-	used_positions: Array[Vector2]
+	used_positions: Array[Dictionary]
 ) -> bool:
 	if _is_near_any_door(room, pos, kind):
 		return false
-	if _is_on_we_corridor(room, pos):
+	if _is_on_we_corridor(room, pos, kind):
 		return false
 	if kind == ItemDB.FurnitureKind.PAINTING and _is_near_north_door_on_wall(room, pos):
 		return false
-	for other: Vector2 in used_positions:
-		if pos.distance_to(other) < MIN_FURNITURE_SEPARATION:
+	for other: Dictionary in used_positions:
+		var other_pos: Vector2 = other.get("pos", Vector2.INF) as Vector2
+		var other_kind: int = int(other.get("kind", kind))
+		if pos.distance_to(other_pos) < PropMetrics.placement_gap(kind, other_kind):
 			return false
 	if kind != ItemDB.FurnitureKind.PAINTING:
 		var rw: float = room.get_room_w()
@@ -110,7 +111,7 @@ static func _door_clearance(room_w: float) -> float:
 static func _is_near_any_door(room: Room, pos: Vector2, kind: int) -> bool:
 	var rw: float = room.get_room_w()
 	var rh: float = room.get_room_h()
-	var clearance: float = _door_clearance(rw)
+	var clearance: float = _door_clearance(rw) + PropMetrics.plan_radius(kind) * 0.45
 	if room.has_door_n and _violates_door_rules(pos, kind, "N", rw, rh, clearance):
 		return true
 	if room.has_door_s and _violates_door_rules(pos, kind, "S", rw, rh, clearance):
@@ -163,13 +164,13 @@ static func _is_in_door_uv_zone(
 	return false
 
 
-static func _is_on_we_corridor(room: Room, pos: Vector2) -> bool:
+static func _is_on_we_corridor(room: Room, pos: Vector2, kind: int) -> bool:
 	if not room.has_door_w or not room.has_door_e:
 		return false
 	var rw: float = room.get_room_w()
 	var rh: float = room.get_room_h()
 	var seg: PackedVector2Array = RoomPerspective.get_we_floor_corridor_segment(rw, rh)
-	var half_w: float = maxf(WE_CORRIDOR_HALF_WIDTH, rw * 0.055)
+	var half_w: float = maxf(WE_CORRIDOR_HALF_WIDTH, rw * 0.055) + PropMetrics.plan_radius(kind) * 0.35
 	if Geometry2D.get_closest_point_to_segment(pos, seg[0], seg[1]).distance_to(pos) < half_w:
 		return true
 	var uv: Vector2 = RoomPerspective.position_to_floor_uv(pos, rw, rh)
