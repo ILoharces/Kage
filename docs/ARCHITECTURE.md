@@ -42,8 +42,8 @@ Proyecto Godot 4.6, duelo 1v1 estilo Spy vs Spy. Mapas editables en JSON (`user:
 1. `ItemDB` — enum `TrapId`, colores, nombres, `TRAP_TO_COUNTER`
 2. `GameState` — lógica de consumo (si aplica)
 3. `spy_base.gd` / `SpyCombat` — efecto en `apply_trap_effect`
-4. `hud.gd` / Trapulator — UI
-5. `furniture.gd` — colocación en mueble
+4. `hud.gd` / `TrapWheel` / Trapulator — UI
+5. Colocación: mueble (`furniture.gd`) para bomba, muelle y cartucho; puerta (`door.gd`) para el cubo; habitación (`room.gd`) para la temporizada
 
 ### Nuevo item
 
@@ -106,6 +106,8 @@ Reglas:
 Persistencia: `user://game_settings.cfg` sección `controls` (`p1_control_mode`, `p2_control_mode`). Los bindings fijos viven en código (`InputBindings._build_default_bindings()`).
 
 Movimiento y apuntado con mando respetan la inclinación del stick (no van siempre a fondo). Interactuar, trampas y disparo se leen por polling en `Player._process`, porque el espía vive dentro de un `SubViewport`.
+
+La rueda de trampas (`TrapWheel`) se abre manteniendo `next_trap` / `p2_next_trap` en la posición del cursor (ratón, o mirilla si es mando). Soltar la tecla o pulsar disparar sobre un sector equipa esa trampa. Si ya llevas una trampa, la X del centro la suelta al confirmar encima; el centro vacío o fuera de la rueda cierra sin cambiar lo que llevas. Mientras está abierta, ese jugador no apunta ni dispara. Con mando, el stick de apuntar elige el sector.
 
 ## Señales globales útiles
 

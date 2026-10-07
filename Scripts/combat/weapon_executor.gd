@@ -46,6 +46,7 @@ func try_fire(attacker: SpyBase, screen_pos: Vector2) -> bool:
 
 
 func _execute_delivery(attacker: SpyBase, weapon: WeaponData, screen_pos: Vector2, aim: AimResult) -> bool:
+	Sfx.play_weapon_fired(weapon.weapon_id)
 	var ctx: WeaponContext = WeaponContext.new(attacker, weapon, screen_pos, aim)
 	if weapon.custom_effect != null:
 		var effect_obj: Variant = weapon.custom_effect.new()

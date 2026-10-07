@@ -7,6 +7,7 @@ class_name Main
 @onready var game_views: GameViewsPanel = $GameRoot/GameViewsPanel
 @onready var hud: Hud = $GameRoot/Hud
 @onready var trapulator: Trapulator = $GameRoot/Trapulator
+@onready var trap_wheel: TrapWheel = $GameRoot/TrapWheel
 @onready var game_over: GameOverPanel = $GameOver
 @onready var main_menu: MainMenu = $MainMenu
 @onready var play_menu: PlayMenu = $PlayMenu

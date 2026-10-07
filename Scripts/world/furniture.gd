@@ -163,13 +163,22 @@ func hide_weapon(weapon_id: StringName) -> void:
 
 
 func set_trap(new_trap_id: int, owner_spy_id: int) -> bool:
+	if new_trap_id == ItemDB.TrapId.TIMED or new_trap_id == ItemDB.TrapId.BUCKET:
+		return false
 	if not is_open or state != State.EMPTY:
 		return false
 	trap_id = new_trap_id
 	trapper_id = owner_spy_id
 	state = State.HAS_TRAP
 	lower_close()
+	flash_placed()
 	return true
+
+
+func flash_placed() -> void:
+	modulate = Color(1.55, 1.35, 0.55)
+	var tw: Tween = create_tween()
+	tw.tween_property(self, "modulate", Color.WHITE, 0.45)
 
 
 func interact(spy: SpyBase) -> Dictionary:

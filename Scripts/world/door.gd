@@ -14,6 +14,9 @@ var owning_room: Room = null
 var partner: Door = null
 var is_exit_door: bool = false
 var is_open: bool = false
+var trap_id: int = -1
+var trapper_id: int = -1
+var _splash_left: float = 0.0
 var _passage_area: Area2D = null
 var _blocker_body: StaticBody2D = null
 var _local_poly: PackedVector2Array = PackedVector2Array()
@@ -24,9 +27,17 @@ func _ready() -> void:
 	add_to_group("door")
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if owning_room != null:
-		z_index = int(position.y) + 2
+		var depth: int = clampi(int(position.y) + 2, -4096, 4096)
+		if z_index != depth:
+			z_index = depth
+	if _splash_left <= 0.0:
+		return
+	_splash_left = maxf(0.0, _splash_left - delta)
+	if _splash_left <= 0.0:
+		_update_visibility()
+	queue_redraw()
 
 
 func refresh_from_room() -> void:
@@ -89,6 +100,7 @@ func try_toggle_for_spy(spy_id: int) -> bool:
 		GameState.exit_reached.emit(spy_id)
 		return false
 	set_open(true, true)
+	_trigger_bucket(spy_id)
 	return true
 
 
@@ -98,6 +110,19 @@ func try_open_for_spy(spy_id: int, propagate: bool = true) -> bool:
 	if not can_spy_open(spy_id):
 		return false
 	set_open(true, propagate)
+	_trigger_bucket(spy_id)
+	return true
+
+
+func has_bucket() -> bool:
+	return trap_id == ItemDB.TrapId.BUCKET
+
+
+func arm_bucket(owner_spy_id: int) -> bool:
+	if not is_closed() or has_bucket():
+		return false
+	trap_id = ItemDB.TrapId.BUCKET
+	trapper_id = owner_spy_id
 	return true
 
 
@@ -118,7 +143,7 @@ func is_closed() -> bool:
 
 
 func _update_visibility() -> void:
-	visible = is_closed()
+	visible = is_closed() or _splash_left > 0.0
 
 
 func _sync_passage() -> void:
@@ -199,7 +224,52 @@ func _expand_polygon(poly: PackedVector2Array, padding: float) -> PackedVector2A
 	return out
 
 
+func _trigger_bucket(spy_id: int) -> void:
+	var bearer: Door = self if has_bucket() else null
+	if bearer == null and partner != null and is_instance_valid(partner) and partner.has_bucket():
+		bearer = partner
+	if bearer == null:
+		return
+	var spy: SpyBase = _find_spy(spy_id)
+	bearer.trap_id = -1
+	bearer.trapper_id = -1
+	bearer.queue_redraw()
+	if spy == null:
+		return
+	var counter_id: int = ItemDB.get_counter_for_trap(ItemDB.TrapId.BUCKET)
+	if GameState.consume_counter(spy.spy_id, counter_id):
+		GameState.notify_human(spy.spy_id, "El paraguas para el cubo")
+		return
+	bearer._splash_left = 0.45
+	bearer._update_visibility()
+	bearer.queue_redraw()
+	spy.apply_trap_effect(ItemDB.TrapId.BUCKET, bearer.global_position)
+
+
+func _find_spy(spy_id: int) -> SpyBase:
+	var rooms: Array[Room] = []
+	if owning_room != null:
+		rooms.append(owning_room)
+	if partner != null and is_instance_valid(partner) and partner.owning_room != null:
+		rooms.append(partner.owning_room)
+	for room: Room in rooms:
+		for body: Node in room.spies_inside:
+			var spy: SpyBase = body as SpyBase
+			if spy != null and spy.spy_id == spy_id:
+				return spy
+	if not is_inside_tree():
+		return null
+	for node: Node in get_tree().get_nodes_in_group("spy"):
+		var spy: SpyBase = node as SpyBase
+		if spy != null and spy.spy_id == spy_id:
+			return spy
+	return null
+
+
 func _draw() -> void:
+	if _splash_left > 0.0:
+		var amount: float = clampf(_splash_left / 0.45, 0.0, 1.0)
+		draw_circle(Vector2.ZERO, lerpf(12.0, 40.0, 1.0 - amount), Color(0.2, 0.75, 0.98, amount * 0.9))
 	if is_open or _local_poly.size() < 3:
 		return
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST

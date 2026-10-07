@@ -69,6 +69,8 @@ func set_game_ui_visible(visible_flag: bool) -> void:
 			main.trapulator.close()
 		else:
 			main.trapulator.visible = main.trapulator.is_open
+	if main.trap_wheel != null and not visible_flag:
+		main.trap_wheel.close_cancel()
 
 
 func on_map_confirmed(layout: LevelLayout) -> void:

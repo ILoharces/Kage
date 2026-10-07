@@ -116,7 +116,7 @@ Prefijo P2: `p2_`. Sin prefijo: P1.
 
 - Movimiento: `move_*` / `p2_move_*` (polling en `SpyMovement`)
 - Combate: `fire_weapon` (clic izq.), `p2_fire_weapon` (O), `aim_*`, `p2_aim_*` (solo InputMap en modo mando)
-- Trampas: `interact`, `place_trap`, `next_trap`, `trapulator`, etc.
+- Trampas: `interact`, `place_trap`, `next_trap` (rueda, mantener), `trapulator`, etc.
 
 Menús: `ui_*` fijos en `InputBindings._apply_fixed_menu_bindings()`.
 

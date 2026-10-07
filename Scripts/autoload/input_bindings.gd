@@ -39,7 +39,7 @@ const BINDING_TABLE: Array[Dictionary] = [
 	{"label": "Mover derecha", "p1": "move_right", "p2": "p2_move_right"},
 	{"label": "Interactuar", "p1": "interact", "p2": "p2_interact"},
 	{"label": "Colocar trampa", "p1": "place_trap", "p2": "p2_place_trap"},
-	{"label": "Cambiar trampa", "p1": "next_trap", "p2": "p2_next_trap"},
+	{"label": "Rueda de trampas", "p1": "next_trap", "p2": "p2_next_trap"},
 	{"label": "Trapulator", "p1": "trapulator", "p2": "p2_trapulator"},
 	{"label": "Mapa", "p1": "toggle_map", "p2": "p2_toggle_map"},
 	{"label": "Menu ingame", "p1": "pause_menu", "p2": "p2_pause_menu"},
@@ -170,7 +170,7 @@ func get_controls_guide(player_index: int) -> Array[Dictionary]:
 		_append_guide_row(rows, player_index, "aim_mode_toggle", "Modo mirilla")
 	_append_guide_row(rows, player_index, "interact", "Interactuar")
 	_append_guide_row(rows, player_index, "place_trap", "Colocar trampa")
-	_append_guide_row(rows, player_index, "next_trap", "Cambiar trampa")
+	_append_guide_row(rows, player_index, "next_trap", "Rueda de trampas")
 	_append_guide_row(rows, player_index, "trapulator", "Trapulator")
 	_append_guide_row(rows, player_index, "toggle_map", "Mapa")
 	_append_guide_row(rows, player_index, "pause_menu", "Pausa")

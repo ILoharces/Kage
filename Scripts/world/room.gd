@@ -27,6 +27,17 @@ var south_wall_bar: SouthWallBar = null
 var _passage_cooldowns: Dictionary = {}  # spy_id -> expire_time_ms
 var _passage_links: Dictionary = {}
 
+enum TimedTrapState { NONE, ARMED, COUNTING }
+
+const TICK_GAP: float = 0.42
+
+static var _shared_tick: AudioStreamWAV = null
+
+var _timed_state: TimedTrapState = TimedTrapState.NONE
+var _timed_fuse_left: float = 0.0
+var _tick_player: AudioStreamPlayer = null
+var _tick_wait: float = 0.0
+
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -46,6 +57,7 @@ func _ready() -> void:
 	south_wall_bar.setup(self)
 	_build_wall_collision()
 	_build_trigger()
+	spy_entered.connect(_on_timed_spy_entered)
 	queue_redraw()
 
 
@@ -83,32 +95,45 @@ func rebuild_geometry() -> void:
 	queue_redraw()
 
 
+func _process(delta: float) -> void:
+	if _timed_state != TimedTrapState.COUNTING:
+		return
+	_timed_fuse_left -= delta
+	_play_tick_if_due(delta)
+	queue_redraw()
+	if _timed_fuse_left > 0.0:
+		return
+	_explode_timed_trap()
+
+
 func _draw() -> void:
 	var rw: float = get_room_w()
 	var rh: float = get_room_h()
 	var outline: Color = ItemDB.COLOR_OUTLINE
+	var alarm: Color = _fuse_tint()
 	var room_quad: PackedVector2Array = PackedVector2Array([
 		Vector2.ZERO,
 		Vector2(rw, 0.0),
 		Vector2(rw, rh),
 		Vector2(0.0, rh),
 	])
-	ArtDraw.tiled(self, room_quad, ArtLibrary.WALL, ArtLibrary.TILE)
+	ArtDraw.tiled(self, room_quad, ArtLibrary.WALL, ArtLibrary.TILE, alarm)
 
 	var back: PackedVector2Array = RoomPerspective.back_wall_polygon(rw, rh)
-	ArtDraw.tiled(self, back, ArtLibrary.WALL, ArtLibrary.TILE)
+	ArtDraw.tiled(self, back, ArtLibrary.WALL, ArtLibrary.TILE, alarm)
 	draw_polyline(back + PackedVector2Array([back[0]]), outline, OUTLINE_W, true)
 
 	var left_w: PackedVector2Array = RoomPerspective.left_wall_polygon(rw, rh)
-	ArtDraw.tiled(self, left_w, ArtLibrary.WALL_SIDE, ArtLibrary.TILE)
+	ArtDraw.tiled(self, left_w, ArtLibrary.WALL_SIDE, ArtLibrary.TILE, alarm)
 	draw_polyline(left_w + PackedVector2Array([left_w[0]]), outline, OUTLINE_W, true)
 
 	var right_w: PackedVector2Array = RoomPerspective.right_wall_polygon(rw, rh)
-	ArtDraw.tiled(self, right_w, ArtLibrary.WALL_SIDE, ArtLibrary.TILE)
+	ArtDraw.tiled(self, right_w, ArtLibrary.WALL_SIDE, ArtLibrary.TILE, alarm)
 	draw_polyline(right_w + PackedVector2Array([right_w[0]]), outline, OUTLINE_W, true)
 
 	var floor_poly: PackedVector2Array = RoomPerspective.floor_polygon(rw, rh)
 	var floor_tint: Color = ArtLibrary.FLOOR_EXIT_TINT if _has_exit_door() else Color.WHITE
+	floor_tint *= alarm
 	ArtDraw.tiled(self, floor_poly, ArtLibrary.FLOOR, ArtLibrary.TILE, floor_tint)
 	draw_polyline(floor_poly + PackedVector2Array([floor_poly[0]]), outline, OUTLINE_W, true)
 
@@ -365,3 +390,144 @@ func get_door_for_direction(direction: String) -> Door:
 
 func get_center_world_pos() -> Vector2:
 	return global_position + RoomPerspective.visible_content_center(get_room_w(), get_room_h())
+
+
+func has_timed_trap() -> bool:
+	return _timed_state != TimedTrapState.NONE
+
+
+func arm_timed_trap() -> bool:
+	if has_timed_trap():
+		return false
+	_timed_state = TimedTrapState.ARMED
+	_timed_fuse_left = 0.0
+	return true
+
+
+func find_spring_exit() -> Dictionary:
+	var mansion: Mansion = _find_mansion()
+	if mansion == null:
+		return {}
+	var options: Array[Dictionary] = []
+	for dir_str: String in ["N", "S", "E", "W"]:
+		if not _has_passage(dir_str):
+			continue
+		var neighbor: Room = mansion.room_grid.get(grid_pos + GridDirection.delta(dir_str)) as Room
+		if neighbor == null:
+			continue
+		var entry_dir: String = GridDirection.opposite(dir_str)
+		if not neighbor._has_passage(entry_dir):
+			continue
+		options.append({
+			"room": neighbor,
+			"entry_dir": entry_dir,
+			"exit_dir": dir_str,
+		})
+	if options.is_empty():
+		return {}
+	return options[randi() % options.size()]
+
+
+func _on_timed_spy_entered(spy: Node) -> void:
+	if _timed_state != TimedTrapState.ARMED:
+		return
+	var body: SpyBase = spy as SpyBase
+	if body == null or not body.is_alive:
+		return
+	_timed_state = TimedTrapState.COUNTING
+	_timed_fuse_left = ItemDB.TIMED_BOMB_FUSE
+	_tick_wait = 0.0
+	_start_fuse_audio()
+	queue_redraw()
+
+
+func _explode_timed_trap() -> void:
+	_timed_state = TimedTrapState.NONE
+	_timed_fuse_left = 0.0
+	_stop_fuse_audio()
+	Sfx.play_bomb_exploded()
+	var victims: Array[SpyBase] = []
+	for body: Node in spies_inside:
+		var spy: SpyBase = body as SpyBase
+		if spy != null and spy.is_alive and spy.combat != null:
+			victims.append(spy)
+	for spy: SpyBase in victims:
+		if spy.is_alive:
+			spy.combat.kill_from_trap(ItemDB.TrapId.TIMED)
+	queue_redraw()
+
+
+func _fuse_tint() -> Color:
+	if _timed_state != TimedTrapState.COUNTING:
+		return Color.WHITE
+	var wave: float = sin(Time.get_ticks_msec() * 0.012) * 0.5 + 0.5
+	return Color(1.0, lerpf(0.32, 0.55, wave), lerpf(0.28, 0.45, wave))
+
+
+func _has_passage(dir_str: String) -> bool:
+	match dir_str:
+		"N":
+			return has_door_n
+		"S":
+			return has_door_s
+		"W":
+			return has_door_w
+		"E":
+			return has_door_e
+	return false
+
+
+func _find_mansion() -> Mansion:
+	var node: Node = self
+	while node != null:
+		if node is Mansion:
+			return node as Mansion
+		node = node.get_parent()
+	return null
+
+
+func _start_fuse_audio() -> void:
+	_stop_fuse_audio()
+	_tick_player = AudioStreamPlayer.new()
+	_tick_player.stream = _shared_tick_stream()
+	_tick_player.volume_db = -6.0
+	add_child(_tick_player)
+
+
+func _stop_fuse_audio() -> void:
+	if _tick_player == null:
+		return
+	_tick_player.stop()
+	_tick_player.queue_free()
+	_tick_player = null
+
+
+func _play_tick_if_due(delta: float) -> void:
+	if _tick_player == null:
+		return
+	_tick_wait -= delta
+	if _tick_wait > 0.0:
+		return
+	_tick_wait = TICK_GAP
+	_tick_player.play()
+
+
+static func _shared_tick_stream() -> AudioStreamWAV:
+	if _shared_tick != null:
+		return _shared_tick
+	var rate: int = 22050
+	var count: int = int(float(rate) * 0.06)
+	var data: PackedByteArray = PackedByteArray()
+	data.resize(count * 2)
+	for i: int in count:
+		var t: float = float(i) / float(rate)
+		var env: float = 1.0 - (float(i) / float(count))
+		var sample: float = sin(t * TAU * 740.0) * env * 0.45
+		data.encode_s16(i * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
+	var wav: AudioStreamWAV = AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = rate
+	wav.stereo = false
+	wav.data = data
+	_shared_tick = wav
+	return wav

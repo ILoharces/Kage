@@ -10,8 +10,22 @@ const WALK_PHASE_DECAY: float = 10.0
 # Por encima de esto el espia esta en otra sala, no pegado a la pared.
 const ROOM_CLAMP_MAX_PULL: float = 512.0
 
+enum SpringPhase { NONE, FALL, TO_DOOR, INTO, LIE, RISE }
+
+const SPRING_FALL_TIME: float = 0.34
+const SPRING_LIE_TIME: float = 0.5
+const SPRING_RISE_TIME: float = 0.28
+const SPRING_SLIDE_SPEED: float = 420.0
+const SPRING_ARRIVE_DIST: float = 22.0
+
 var host: SpyBase = null
 var _passage_entry_blocks: Dictionary = {}
+var _spring_phase: SpringPhase = SpringPhase.NONE
+var _spring_time: float = 0.0
+var _spring_dest: Room = null
+var _spring_entry: String = ""
+var _spring_exit: String = ""
+var _spring_goal: Vector2 = Vector2.ZERO
 
 
 func _init(p_host: SpyBase) -> void:
@@ -19,6 +33,11 @@ func _init(p_host: SpyBase) -> void:
 
 
 func physics_process(delta: float) -> void:
+	if host.slow_timer > 0.0:
+		host.slow_timer = maxf(0.0, host.slow_timer - delta)
+	if _spring_phase != SpringPhase.NONE:
+		_tick_spring(delta)
+		return
 	if not host.is_alive:
 		host.velocity = Vector2.ZERO
 		host.move_and_slide()
@@ -47,7 +66,8 @@ func physics_process(delta: float) -> void:
 	else:
 		host.modulate = host.alive_modulate
 		var input_vector: Vector2 = host._compute_input_vector()
-		var desired: Vector2 = input_vector * SPEED
+		var speed_scale: float = SpyBase.MOVE_SLOW_SCALE if host.slow_timer > 0.0 else 1.0
+		var desired: Vector2 = input_vector * SPEED * speed_scale
 		var rate: float = ACCEL if input_vector.length_squared() > 0.0004 else FRICTION
 		host.velocity = host.velocity.move_toward(desired, rate * delta)
 	_update_draw_order()
@@ -58,6 +78,118 @@ func physics_process(delta: float) -> void:
 	if host.current_room != null:
 		host.current_room.poll_spy_passages(host)
 	host.queue_redraw()
+
+
+func is_springing() -> bool:
+	return _spring_phase != SpringPhase.NONE
+
+
+func begin_spring_launch() -> void:
+	cancel_spring()
+	_spring_phase = SpringPhase.FALL
+	_spring_time = 0.0
+	_spring_dest = null
+	_spring_entry = ""
+	_spring_exit = ""
+	host.knockdown_pose = 0.0
+	host.velocity = Vector2.ZERO
+	var room: Room = host.current_room
+	if room != null:
+		var passage: Dictionary = room.find_spring_exit()
+		_spring_dest = passage.get("room") as Room
+		_spring_entry = String(passage.get("entry_dir", ""))
+		_spring_exit = String(passage.get("exit_dir", ""))
+	host.queue_redraw()
+
+
+func cancel_spring() -> void:
+	_spring_phase = SpringPhase.NONE
+	_spring_time = 0.0
+	_spring_dest = null
+	_spring_entry = ""
+	_spring_exit = ""
+	if host != null:
+		host.knockdown_pose = 0.0
+
+
+func _tick_spring(delta: float) -> void:
+	host.modulate = host.alive_modulate
+	match _spring_phase:
+		SpringPhase.FALL:
+			_spring_time += delta
+			var fall_t: float = clampf(_spring_time / SPRING_FALL_TIME, 0.0, 1.0)
+			host.knockdown_pose = fall_t
+			host.velocity = Vector2.ZERO
+			if fall_t >= 1.0:
+				_begin_spring_slide()
+		SpringPhase.TO_DOOR, SpringPhase.INTO:
+			if _spring_step_toward(delta):
+				if _spring_phase == SpringPhase.TO_DOOR:
+					_cross_spring_door()
+				else:
+					_spring_phase = SpringPhase.LIE
+					_spring_time = 0.0
+					host.velocity = Vector2.ZERO
+		SpringPhase.LIE:
+			host.knockdown_pose = 1.0
+			host.velocity = Vector2.ZERO
+			_spring_time += delta
+			if _spring_time >= SPRING_LIE_TIME:
+				_spring_phase = SpringPhase.RISE
+				_spring_time = 0.0
+		SpringPhase.RISE:
+			_spring_time += delta
+			host.knockdown_pose = 1.0 - clampf(_spring_time / SPRING_RISE_TIME, 0.0, 1.0)
+			host.velocity = Vector2.ZERO
+			if host.knockdown_pose <= 0.0:
+				cancel_spring()
+	host.move_and_slide()
+	_update_draw_order()
+	host.update_body_collider()
+	host.queue_redraw()
+
+
+func _begin_spring_slide() -> void:
+	host.knockdown_pose = 1.0
+	var room: Room = host.current_room
+	if room == null or _spring_dest == null or _spring_entry.is_empty() or _spring_exit.is_empty():
+		_spring_phase = SpringPhase.LIE
+		_spring_time = 0.0
+		return
+	var door: Door = room.get_door_for_direction(_spring_exit)
+	if door != null and door.is_closed():
+		door.try_open_for_spy(host.spy_id, true)
+	_spring_goal = room.get_door_world_pos(_spring_exit)
+	_spring_phase = SpringPhase.TO_DOOR
+
+
+func _cross_spring_door() -> void:
+	var destination: Room = _spring_dest
+	var entry_dir: String = _spring_entry
+	var from_room: Room = host.current_room
+	if destination == null or entry_dir.is_empty():
+		_spring_phase = SpringPhase.LIE
+		_spring_time = 0.0
+		return
+	teleport_to_room(destination, entry_dir, from_room)
+	var entry_pos: Vector2 = host.global_position
+	var center: Vector2 = destination.get_center_world_pos()
+	var inward: Vector2 = center - entry_pos
+	if inward.length_squared() < 4.0:
+		inward = Vector2.DOWN
+	_spring_goal = entry_pos + inward.normalized() * 90.0
+	_spring_phase = SpringPhase.INTO
+	host.knockdown_pose = 1.0
+
+
+func _spring_step_toward(_delta: float) -> bool:
+	var to_goal: Vector2 = _spring_goal - host.global_position
+	if to_goal.length() <= SPRING_ARRIVE_DIST:
+		host.global_position = _spring_goal
+		host.velocity = Vector2.ZERO
+		return true
+	host.velocity = to_goal.normalized() * SPRING_SLIDE_SPEED
+	return false
 
 
 func arm_passage_entry_block(room: Room, entry_dir: String) -> void:

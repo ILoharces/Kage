@@ -67,6 +67,10 @@ static func item_texture(item_id: int) -> Texture2D:
 	return _at(ITEMS, item_id)
 
 
+static func trap_texture(trap_id: int) -> Texture2D:
+	return _at(TRAPS, trap_id)
+
+
 static func icon_for_held(held: HeldInventory) -> Texture2D:
 	if held == null or not held.is_holding():
 		return null

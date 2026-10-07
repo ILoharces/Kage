@@ -29,6 +29,7 @@ func _ready() -> void:
 	GameState.suitcase_dropped.connect(_on_suitcase_state_changed)
 	GameState.suitcase_recovered.connect(_on_suitcase_recovered)
 	GameState.suitcase_stolen.connect(_on_suitcase_stolen)
+	GameState.player_notice.connect(flash_message)
 	_on_time_changed(ItemDB.SpyId.PLAYER1, GameState.get_time_left(ItemDB.SpyId.PLAYER1))
 	_on_time_changed(ItemDB.SpyId.PLAYER2, GameState.get_time_left(ItemDB.SpyId.PLAYER2))
 	player_panel.update_inventory(null)

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/ui/trap_wheel.gd" id="1_wheel"]
+
+[node name="TrapWheel" type="CanvasLayer"]
+layer = 22
+script = ExtResource("1_wheel")

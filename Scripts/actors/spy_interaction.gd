@@ -11,7 +11,7 @@ func _init(p_host: SpyBase) -> void:
 
 
 func interact_with_nearby() -> bool:
-	if not host.is_alive or host.is_stunned() or host.is_searching() or host.orbital_targeting:
+	if not host.is_alive or host.is_stunned() or host.is_springing() or host.is_searching() or host.orbital_targeting:
 		return false
 	var target: Node = _closest_interact_target()
 	if target == null:
@@ -29,7 +29,7 @@ func interact_with_nearby() -> bool:
 
 
 func use_furniture(furn: Furniture) -> bool:
-	if not host.is_alive or host.is_stunned() or host.is_searching() or host.orbital_targeting:
+	if not host.is_alive or host.is_stunned() or host.is_springing() or host.is_searching() or host.orbital_targeting:
 		return false
 	if furn == null or not is_instance_valid(furn):
 		return false
@@ -47,8 +47,12 @@ func use_furniture(furn: Furniture) -> bool:
 
 
 func try_place_trap(trap_id: int) -> bool:
-	if not host.is_alive or host.is_stunned() or host.is_searching():
+	if not host.is_alive or host.is_stunned() or host.is_springing() or host.is_searching():
 		return false
+	if trap_id == ItemDB.TrapId.TIMED:
+		return _try_place_timed_trap()
+	if trap_id == ItemDB.TrapId.BUCKET:
+		return _try_place_bucket_trap()
 	if not prepare_hands_for_trap(trap_id):
 		return false
 	if host.nearby_furniture == null:
@@ -58,11 +62,44 @@ func try_place_trap(trap_id: int) -> bool:
 	var success: bool = host.nearby_furniture.set_trap(trap_id, host.spy_id)
 	if success:
 		host.open_furniture = null
-		GameState.consume_trap(host.spy_id, trap_id)
-		if host.held != null:
-			host.held.release_trap()
-			_refresh_hands_from_inventory()
+		_commit_placed_trap(trap_id)
 	return success
+
+
+func _try_place_timed_trap() -> bool:
+	var room: Room = host.current_room
+	if room == null or room.has_timed_trap():
+		return false
+	if not prepare_hands_for_trap(ItemDB.TrapId.TIMED):
+		return false
+	if not room.arm_timed_trap():
+		return false
+	_commit_placed_trap(ItemDB.TrapId.TIMED)
+	return true
+
+
+func _try_place_bucket_trap() -> bool:
+	var door: Door = host.nearby_door
+	if door == null or not is_instance_valid(door) or not door.is_closed() or door.has_bucket():
+		return false
+	if not prepare_hands_for_trap(ItemDB.TrapId.BUCKET):
+		return false
+	if not door.arm_bucket(host.spy_id):
+		return false
+	_commit_placed_trap(ItemDB.TrapId.BUCKET)
+	return true
+
+
+func _commit_placed_trap(trap_id: int) -> void:
+	GameState.consume_trap(host.spy_id, trap_id)
+	if host.held != null:
+		host.held.release_trap()
+	_refresh_hands_from_inventory()
+	host.emit_held_changed()
+	host.queue_redraw()
+	var trap_name: String = String(ItemDB.TRAP_NAMES.get(trap_id, "Trampa"))
+	GameState.notify_human(host.spy_id, "%s colocado" % trap_name)
+	Sfx.play_trap_placed()
 
 
 func drop_item_in_room(item_id: int) -> void:

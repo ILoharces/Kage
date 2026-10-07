@@ -19,6 +19,7 @@ const PHYSICS_FOOT_HEIGHT: float = 12.0
 const PHYSICS_FOOT_WIDTH_RATIO: float = 0.72
 const PROBE_RADIUS: float = PROBE_RADIUS_BASE * COLLIDER_SCALE
 const KNOCKBACK_DURATION: float = 0.18
+const MOVE_SLOW_SCALE: float = 0.45
 const WALK_WIGGLE_SPEED: float = 13.0
 
 @export var spy_id: int = 0
@@ -27,6 +28,8 @@ var current_room: Room = null
 var nearby_furniture: Furniture = null
 var nearby_door: Door = null
 var stun_timer: float = 0.0
+var slow_timer: float = 0.0
+var knockdown_pose: float = 0.0
 var knockback_timer: float = 0.0
 var knockback_velocity: Vector2 = Vector2.ZERO
 var aim_direction: Vector2 = Vector2.RIGHT
@@ -96,6 +99,10 @@ func is_stunned() -> bool:
 	return stun_timer > 0.0
 
 
+func is_springing() -> bool:
+	return movement != null and movement.is_springing()
+
+
 func is_operational() -> bool:
 	return is_alive and not is_stunned() and not is_searching()
 
@@ -110,6 +117,7 @@ func set_orbital_targeting(active: bool) -> void:
 	orbital_targeting = active
 	if active:
 		velocity = Vector2.ZERO
+		Sfx.play_orbital_armed()
 	elif is_inside_tree():
 		var main: Main = get_tree().current_scene as Main
 		if main != null:
@@ -149,6 +157,10 @@ func respawn_in_room(room: Room) -> void:
 	modulate = alive_modulate
 	velocity = Vector2.ZERO
 	stun_timer = 0.0
+	slow_timer = 0.0
+	knockdown_pose = 0.0
+	if movement != null:
+		movement.cancel_spring()
 	knockback_timer = 0.0
 	knockback_velocity = Vector2.ZERO
 	set_orbital_targeting(false)

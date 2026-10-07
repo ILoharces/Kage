@@ -67,16 +67,16 @@ func draw() -> void:
 	var body_h: float = metrics["body_h"] as float
 	var body_w: float = metrics["body_w"] as float
 	var outline: Color = ItemDB.COLOR_OUTLINE
-	var walk_xf: Transform2D = _get_walk_transform(body_h)
+	var body_xf: Transform2D = _get_body_transform(body_h)
 	host.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	host.draw_set_transform_matrix(walk_xf)
+	host.draw_set_transform_matrix(body_xf)
 	var tex: Texture2D = ArtLibrary.spy_texture(host.spy_id)
 	var top: float = metrics["head_top_y"] as float
 	var foot: float = metrics["foot_y"] as float
 	var width: float = (metrics["hitbox_size"] as Vector2).x
 	if tex != null:
 		host.draw_texture_rect(tex, Rect2(-width * 0.5, top, width, foot - top), false)
-	_draw_held_item(depth, body_h, body_w, outline, walk_xf)
+	_draw_held_item(depth, body_h, body_w, outline, body_xf)
 	host.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
@@ -109,6 +109,18 @@ func _weapon_point_local(point_in_weapon_space: Vector2, apply_walk: bool) -> Ve
 	if apply_walk:
 		local_pos = _get_walk_transform(body_h) * local_pos
 	return local_pos
+
+
+func _get_body_transform(body_h: float) -> Transform2D:
+	if host != null and host.knockdown_pose > 0.001:
+		return _get_knockdown_transform(body_h)
+	return _get_walk_transform(body_h)
+
+
+func _get_knockdown_transform(body_h: float) -> Transform2D:
+	var pivot: Vector2 = Vector2(0.0, body_h * 0.45)
+	var angle: float = lerpf(0.0, PI * 0.5, clampf(host.knockdown_pose, 0.0, 1.0))
+	return Transform2D.IDENTITY.translated(pivot).rotated(angle).translated(-pivot)
 
 
 func _get_walk_transform(body_h: float) -> Transform2D:

@@ -1,7 +1,7 @@
 extends SpyBase
 class_name Player
 
-# R: ciclar trampa | Q: colocar | Tab: Trapulator | E: inspeccionar / recoger del suelo
+# R: rueda de trampas | Q: colocar | Tab: Trapulator | E: inspeccionar / recoger del suelo
 
 var input_blocked: bool = false
 
@@ -20,9 +20,13 @@ func _compute_input_vector() -> Vector2:
 
 
 func _process(delta: float) -> void:
-	_update_aim_controller(delta)
-	_poll_combat_input()
-	_poll_world_input()
+	if is_springing():
+		return
+	var wheel_blocks: bool = _trap_wheel_blocks()
+	if not wheel_blocks:
+		_update_aim_controller(delta)
+		_poll_combat_input()
+	_poll_world_input(wheel_blocks)
 
 
 func _poll_combat_input() -> void:
@@ -59,7 +63,25 @@ func _get_next_trap_action() -> String:
 	return "next_trap"
 
 
-func _poll_world_input() -> void:
+func get_trap_wheel_action() -> String:
+	return _get_next_trap_action()
+
+
+func get_fire_action_name() -> String:
+	return _get_fire_action()
+
+
+func can_open_trap_wheel() -> bool:
+	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
+		return false
+	if orbital_targeting:
+		return false
+	return true
+
+
+func _poll_world_input(wheel_blocks: bool = false) -> void:
+	if wheel_blocks:
+		return
 	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
 		return
 	if orbital_targeting:
@@ -70,8 +92,6 @@ func _poll_world_input() -> void:
 		var trap_id: int = held.get_trap_id() if held != null else -1
 		if trap_id >= 0:
 			try_place_trap(trap_id)
-	elif Input.is_action_just_pressed(_get_next_trap_action()):
-		_cycle_held_trap()
 
 
 func _update_aim_controller(delta: float) -> void:
@@ -144,5 +164,8 @@ func _get_main_node() -> Main:
 	return get_tree().current_scene as Main
 
 
-func _cycle_held_trap() -> void:
-	cycle_held_trap()
+func _trap_wheel_blocks() -> bool:
+	var main_node: Main = _get_main_node()
+	if main_node == null or main_node.trap_wheel == null:
+		return false
+	return main_node.trap_wheel.blocks_player(self)

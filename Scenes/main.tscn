@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://Scripts/core/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://Scenes/ui/game_views_panel.tscn" id="2_game_views"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://Scenes/ui/escape_menu.tscn" id="9_escape_menu"]
 [ext_resource type="PackedScene" path="res://Scenes/ui/settings_menu.tscn" id="10_settings_menu"]
 [ext_resource type="PackedScene" path="res://Scenes/ui/tutorial_overlay.tscn" id="11_tutorial"]
+[ext_resource type="PackedScene" path="res://Scenes/ui/trap_wheel.tscn" id="12_wheel"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -51,6 +52,8 @@ offset_bottom = 1080.0
 [node name="Hud" parent="GameRoot" instance=ExtResource("3_hud")]
 
 [node name="Trapulator" parent="GameRoot" instance=ExtResource("4_trap")]
+
+[node name="TrapWheel" parent="GameRoot" instance=ExtResource("12_wheel")]
 
 [node name="GameOver" parent="." instance=ExtResource("5_go")]
 

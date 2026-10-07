@@ -4,8 +4,8 @@ extends Node
 # Se accede como singleton (autoload ItemDB).
 
 enum ItemId { SUITCASE, KEY, MONEY, PASSPORT}
-enum TrapId { BOMB}
-enum CounterId { WIRE_CUTTERS }
+enum TrapId { BOMB, SPRING, BUCKET, GUN, TIMED }
+enum CounterId { WIRE_CUTTERS, WRENCH, UMBRELLA, TONGS }
 enum FurnitureKind { PAINTING, BOOKSHELF, ARMCHAIR, DRAWERS, PLANT, LAMP, CLOCK, TABLE, WEAPON_BOX }
 enum SpyId { PLAYER1, PLAYER2 }
 
@@ -14,12 +14,15 @@ const TRAP_COUNT: int = 5
 
 # Reservado (la inspeccion de muebles es instantanea al pulsar interactuar).
 const SEARCH_DURATION: float = 0.0
-# Cuanto dura la bomba temporizada antes de explotar tras colocarse.
+# Cuanto dura la mecha de la temporizada despues de que un espia entre en la habitacion.
 const TIMED_BOMB_FUSE: float = 5.0
 
 # Cada trampa se neutraliza con una contramedida concreta segun la guia clasica.
 const TRAP_TO_COUNTER: Dictionary = {
 	TrapId.BOMB: CounterId.WIRE_CUTTERS,
+	TrapId.SPRING: CounterId.WRENCH,
+	TrapId.BUCKET: CounterId.UMBRELLA,
+	TrapId.GUN: CounterId.TONGS,
 }
 
 # Colores placeholder para todos los elementos visuales
@@ -39,19 +42,34 @@ const ITEM_NAMES: Dictionary = {
 
 const TRAP_COLORS: Dictionary = {
 	TrapId.BOMB: Color("#ff1744"),
+	TrapId.SPRING: Color("#ffeb3b"),
+	TrapId.BUCKET: Color("#29b6f6"),
+	TrapId.GUN: Color("#8d6e63"),
+	TrapId.TIMED: Color("#ff6d00"),
 }
 
 const TRAP_NAMES: Dictionary = {
 	TrapId.BOMB: "Bomba",
+	TrapId.SPRING: "Muelle",
+	TrapId.BUCKET: "Cubo",
+	TrapId.GUN: "Cartucho",
+	TrapId.TIMED: "Temporizada",
 }
 
 # Etiquetas cortas para el placeholder en mano del jugador.
 const TRAP_HOLD_LABELS: Dictionary = {
 	TrapId.BOMB: "Bomba",
+	TrapId.SPRING: "Muelle",
+	TrapId.BUCKET: "Cubo",
+	TrapId.GUN: "Cartucho",
+	TrapId.TIMED: "Temporizada",
 }
 
 const COUNTER_NAMES: Dictionary = {
 	CounterId.WIRE_CUTTERS: "Cortacables",
+	CounterId.WRENCH: "Llave inglesa",
+	CounterId.UMBRELLA: "Paraguas",
+	CounterId.TONGS: "Tenazas",
 }
 
 const FURNITURE_NAMES: Dictionary = {
@@ -113,13 +131,28 @@ func get_all_items() -> Array[int]:
 func get_all_traps() -> Array[int]:
 	var arr: Array[int] = [
 		TrapId.BOMB,
+		TrapId.SPRING,
+		TrapId.BUCKET,
+		TrapId.GUN,
+		TrapId.TIMED,
 	]
 	return arr
+
+
+func is_furniture_trap(trap_id: int) -> bool:
+	return trap_id == TrapId.BOMB or trap_id == TrapId.SPRING or trap_id == TrapId.GUN
+
+
+func is_door_trap(trap_id: int) -> bool:
+	return trap_id == TrapId.BUCKET
 
 
 func get_all_counters() -> Array[int]:
 	var arr: Array[int] = [
 		CounterId.WIRE_CUTTERS,
+		CounterId.WRENCH,
+		CounterId.UMBRELLA,
+		CounterId.TONGS,
 	]
 	return arr
 

@@ -33,7 +33,7 @@ La primera vez verás un **tutorial** en pantalla. Puedes saltarlo; no volverá 
 | Apuntar (combate) | Ratón en las ventanas de vista | Mando: stick derecho (recomendado) |
 | Disparar | Clic izquierdo | **O** / RT (mando) |
 | Interactuar | E | I |
-| Trampas / ciclar | Q / R | P / U |
+| Trampas | Q coloca; mantener R (rueda) | Mando: mantener el botón de rueda, stick derecho elige |
 | Trapulator | Tab | Home |
 | Mapa | M | (ver bindings P2 en Ajustes) |
 | Pausa | Esc | (acción P2 en Ajustes) |
@@ -67,7 +67,7 @@ Solo tiene **un disparo** por recarga en el mapa. Es la forma principal de ataca
 
 ## Trampas y HUD
 
-- **Trampas**: Q/R para ciclar y colocar; **Tab** abre el trapulator.
+- **Trampas**: mantén **R** para la rueda de selección (clic o soltar sobre una trampa la equipa; centro o fuera cancela); **Q** coloca; **Tab** abre el trapulator.
 - **Mapa**: **M** durante la partida.
 - El **HUD** muestra inventario, tiempo, munición y estado de cada espía.
 

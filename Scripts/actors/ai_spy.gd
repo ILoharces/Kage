@@ -62,7 +62,7 @@ func _ai_tick(delta: float) -> void:
 		input_vector = Vector2.ZERO
 		return
 	# Si estamos abriendo un mueble, esperamos sin moverse.
-	if is_searching() or is_stunned():
+	if is_searching() or is_stunned() or is_springing():
 		input_vector = Vector2.ZERO
 		return
 	if decision_timer <= 0.0:
@@ -75,6 +75,9 @@ func _choose_state() -> void:
 	if GameState.has_all_items(spy_id):
 		ai_state = State.RETURN
 		target_room = mansion.get_exit_room()
+		return
+	if place_trap_cooldown <= 0.0 and _pick_trap_to_place() != -1 and randf() < TRAP_PLACE_CHANCE:
+		ai_state = State.PLACE_TRAP
 		return
 	if target_room == null or target_room == current_room:
 		if target_furniture == null:
@@ -160,6 +163,14 @@ func _place_trap_step() -> Vector2:
 	var to_target: Vector2 = target_pos - global_position
 	if to_target.length() > FURNITURE_REACH:
 		return to_target.normalized()
+	if trap_id == ItemDB.TrapId.BUCKET:
+		var door: Door = target_node as Door
+		if door != null and door.is_closed() and not door.has_bucket():
+			nearby_door = door
+			if try_place_trap(trap_id):
+				place_trap_cooldown = 5.0
+		ai_state = State.SEARCH
+		return Vector2.ZERO
 	var furn: Furniture = target_node as Furniture
 	if furn != null:
 		if not furn.is_raised_open():
@@ -173,20 +184,38 @@ func _place_trap_step() -> Vector2:
 func _pick_trap_to_place() -> int:
 	var available: Array[int] = []
 	for trap_id: int in ItemDB.get_all_traps():
-		if GameState.get_trap_count(spy_id, trap_id) > 0:
+		if GameState.get_trap_count(spy_id, trap_id) <= 0:
+			continue
+		if ItemDB.is_furniture_trap(trap_id) and _pick_furniture_for_trap() != null:
+			available.append(trap_id)
+		elif ItemDB.is_door_trap(trap_id) and _pick_bucket_door() != null:
 			available.append(trap_id)
 	if available.is_empty():
 		return -1
 	return available[randi() % available.size()]
 
 
-func _pick_trap_target_for(_trap_id: int) -> Node:
-	# Todas las trampas (incluido el cubo de agua) se colocan en muebles vacios
-	# que ya hemos revisado, no en puertas.
+func _pick_trap_target_for(trap_id: int) -> Node:
+	if ItemDB.is_door_trap(trap_id):
+		return _pick_bucket_door()
+	return _pick_furniture_for_trap()
+
+
+func _pick_furniture_for_trap() -> Furniture:
 	for furn_node: Node in current_room.furniture_list:
 		var furn: Furniture = furn_node as Furniture
 		if furn != null and furn.is_empty() and visited_furniture.has(furn.get_instance_id()):
 			return furn
+	return null
+
+
+func _pick_bucket_door() -> Door:
+	if current_room == null:
+		return null
+	for dir_str: String in ["N", "S", "E", "W"]:
+		var door: Door = current_room.get_door_for_direction(dir_str)
+		if door != null and door.is_closed() and not door.has_bucket():
+			return door
 	return null
 
 

@@ -41,7 +41,7 @@ const _STEPS: Array[Dictionary] = [
 		"title": "Controles",
 		"body": (
 			"Jugador 1 (blanco): WASD mover; raton apunta dentro de las ventanas de "
-			+ "vista; clic izquierdo dispara; E interactuar; Q/R trampas; Tab trapulator; "
+			+ "vista; clic izquierdo dispara; E interactuar; Q coloca; mantén R para la rueda de trampas; Tab trapulator; "
 			+ "M mapa; Esc pausa.\n\n"
 			+ "Jugador 2 (negro, sin IA): flechas mover; O disparar. El apuntado con "
 			+ "solo teclado esta muy limitado; se recomienda mando (stick derecho apunta, "
@@ -67,7 +67,8 @@ const _STEPS: Array[Dictionary] = [
 	{
 		"title": "Trampas y HUD",
 		"body": (
-			"Coloca trampas con Q/R y el trapulator (Tab). El mapa (M) muestra la mansion.\n\n"
+			"Mantén R para abrir la rueda donde está el cursor. Mueve el ratón a una trampa y suelta R o haz clic para equiparla. En el centro o fuera de la rueda se cierra sin cambiar nada. Q coloca la trampa equipada. Tab abre el trapulator.\n\n"
+			+ "El mapa (M) muestra la mansion.\n\n"
 			+ "El HUD muestra inventario, tiempo y estado de cada espia.\n\n"
 			+ "La victoria es por escape con todo el botín o por agotar el tiempo del "
 			+ "rival, no por una sola muerte. Pulsa Entendido para ir al menu."

@@ -148,6 +148,8 @@ func _add_option_row(entry: Dictionary) -> void:
 			checkbox.toggled.connect(_on_bool_toggled.bind(option_id))
 			row.add_child(checkbox)
 			_widgets_by_id[option_id] = checkbox
+		"float":
+			_add_float_option(row, entry, option_id)
 		_:
 			var fallback: Label = Label.new()
 			fallback.text = "%s (tipo no soportado: %s)" % [String(entry.get("label", option_id)), option_type]
@@ -163,6 +165,40 @@ func _add_option_row(entry: Dictionary) -> void:
 	_options_vbox.add_child(row)
 
 
+func _add_float_option(row: VBoxContainer, entry: Dictionary, option_id: String) -> void:
+	var header: HBoxContainer = HBoxContainer.new()
+	header.add_theme_constant_override("separation", 12)
+	var name_label: Label = Label.new()
+	name_label.text = String(entry.get("label", option_id))
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	NesUiTheme.style_caption(name_label)
+	header.add_child(name_label)
+	var value_label: Label = Label.new()
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value_label.custom_minimum_size = Vector2(56, 0)
+	NesUiTheme.style_caption(value_label)
+	header.add_child(value_label)
+	row.add_child(header)
+	var slider: HSlider = HSlider.new()
+	slider.min_value = float(entry.get("min", 0.0))
+	slider.max_value = float(entry.get("max", 1.0))
+	slider.step = float(entry.get("step", 0.05))
+	slider.custom_minimum_size = Vector2(280, 24)
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stored: Variant = GameSettings.get_option_value(option_id)
+	var initial: float = float(entry.get("default", slider.min_value))
+	if stored != null:
+		initial = float(stored)
+	slider.set_block_signals(true)
+	slider.value = initial
+	slider.set_block_signals(false)
+	slider.value_changed.connect(_on_float_changed.bind(option_id))
+	slider.set_meta("value_label", value_label)
+	row.add_child(slider)
+	_widgets_by_id[option_id] = slider
+	_refresh_float_label(slider, initial)
+
+
 func _sync_widgets_from_settings() -> void:
 	for option_id: Variant in _widgets_by_id.keys():
 		var widget: Control = _widgets_by_id[option_id] as Control
@@ -172,10 +208,30 @@ func _sync_widgets_from_settings() -> void:
 			checkbox.set_block_signals(true)
 			checkbox.button_pressed = bool(value)
 			checkbox.set_block_signals(false)
+		elif widget is HSlider:
+			var slider: HSlider = widget as HSlider
+			slider.set_block_signals(true)
+			slider.value = float(value)
+			slider.set_block_signals(false)
+			_refresh_float_label(slider, float(value))
 
 
 func _on_bool_toggled(pressed: bool, option_id: String) -> void:
 	GameSettings.set_option_value(option_id, pressed)
+
+
+func _on_float_changed(value: float, option_id: String) -> void:
+	GameSettings.set_option_value(option_id, value)
+	var widget: Control = _widgets_by_id.get(option_id) as Control
+	if widget is HSlider:
+		_refresh_float_label(widget as HSlider, value)
+
+
+func _refresh_float_label(slider: HSlider, value: float) -> void:
+	var value_label: Label = slider.get_meta("value_label") as Label
+	if value_label == null:
+		return
+	value_label.text = "%d%%" % int(roundf(value * 100.0))
 
 
 func _on_setting_changed(option_id: String, _value: Variant) -> void:
@@ -187,3 +243,10 @@ func _on_setting_changed(option_id: String, _value: Variant) -> void:
 		checkbox.set_block_signals(true)
 		checkbox.button_pressed = bool(GameSettings.get_option_value(option_id))
 		checkbox.set_block_signals(false)
+	elif widget is HSlider:
+		var slider: HSlider = widget as HSlider
+		var stored: float = float(GameSettings.get_option_value(option_id))
+		slider.set_block_signals(true)
+		slider.value = stored
+		slider.set_block_signals(false)
+		_refresh_float_label(slider, stored)

@@ -7,6 +7,9 @@ signal setting_changed(option_id: String, value: Variant)
 signal control_modes_changed
 
 const SETTINGS_PATH: String = "user://game_settings.cfg"
+const TRAP_WHEEL_SCALE_MIN: float = 0.6
+const TRAP_WHEEL_SCALE_MAX: float = 1.8
+const TRAP_WHEEL_SCALE_DEFAULT: float = 1.0
 
 const _DEFINITIONS: Array[Dictionary] = [
 	{
@@ -21,9 +24,26 @@ const _DEFINITIONS: Array[Dictionary] = [
 			},
 		],
 	},
+	{
+		"section_id": "interface",
+		"title": "Interfaz",
+		"options": [
+			{
+				"id": "trap_wheel_scale",
+				"label": "Tamaño de la rueda de trampas",
+				"type": "float",
+				"min": TRAP_WHEEL_SCALE_MIN,
+				"max": TRAP_WHEEL_SCALE_MAX,
+				"step": 0.05,
+				"default": TRAP_WHEEL_SCALE_DEFAULT,
+				"hint": "Escala de la rueda al mantener la tecla de selección.",
+			},
+		],
+	},
 ]
 
 var use_ai_default: bool = true
+var trap_wheel_scale: float = TRAP_WHEEL_SCALE_DEFAULT
 var p1_control_mode: int = 0
 var p2_control_mode: int = 2
 var p1_gamepad_aim_mode: int = 0
@@ -160,23 +180,33 @@ func apply_to_match_defaults() -> void:
 
 func _sync_properties_to_values() -> void:
 	_values["use_ai_default"] = use_ai_default
+	_values["trap_wheel_scale"] = trap_wheel_scale
 
 
 func _sync_values_to_properties() -> void:
 	use_ai_default = bool(_values.get("use_ai_default", true))
+	trap_wheel_scale = _clamp_trap_wheel_scale(float(_values.get("trap_wheel_scale", TRAP_WHEEL_SCALE_DEFAULT)))
 
 
 func _apply_value_to_property(option_id: String, value: Variant) -> void:
 	match option_id:
 		"use_ai_default":
 			use_ai_default = bool(value)
+		"trap_wheel_scale":
+			trap_wheel_scale = _clamp_trap_wheel_scale(float(value))
 		_:
 			pass
+
+
+func _clamp_trap_wheel_scale(value: float) -> float:
+	return clampf(value, TRAP_WHEEL_SCALE_MIN, TRAP_WHEEL_SCALE_MAX)
 
 
 func _default_for_option(entry: Dictionary) -> Variant:
 	match String(entry.get("type", "")):
 		"bool":
 			return bool(entry.get("default", false))
+		"float":
+			return float(entry.get("default", 0.0))
 		_:
 			return entry.get("default", null)

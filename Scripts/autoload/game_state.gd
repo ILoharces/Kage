@@ -15,6 +15,7 @@ signal map_overlay_close_requested
 signal suitcase_dropped(spy_id: int)
 signal suitcase_recovered(spy_id: int)
 signal suitcase_stolen(thief_id: int, victim_id: int)
+signal player_notice(text: String)
 signal weapons_changed(spy_id: int)
 signal spy_died(victim_id: int, killer_id: int, trap_id: int)
 signal respawn_started(spy_id: int, duration: float)
@@ -587,6 +588,13 @@ func add_trap(spy_id: int, trap_id: int, amount: int = 1) -> void:
 	var traps: Dictionary = traps_by_spy[spy_id] as Dictionary
 	traps[trap_id] = int(traps.get(trap_id, 0)) + amount
 	traps_changed.emit(spy_id)
+
+
+func notify_human(spy_id: int, text: String) -> void:
+	if text.is_empty():
+		return
+	if spy_id == ItemDB.SpyId.PLAYER1 or (not use_ai and spy_id == ItemDB.SpyId.PLAYER2):
+		player_notice.emit(text)
 
 
 func consume_trap(spy_id: int, trap_id: int) -> bool:
