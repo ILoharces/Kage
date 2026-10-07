@@ -51,17 +51,7 @@ func _ready() -> void:
 	_screens.connect_menus()
 	if not InputBindings.control_modes_changed.is_connected(_on_control_modes_changed):
 		InputBindings.control_modes_changed.connect(_on_control_modes_changed)
-	if not GameSettings.has_completed_tutorial():
-		main_menu.visible = false
-		if not tutorial_overlay.finished.is_connected(_on_tutorial_finished):
-			tutorial_overlay.finished.connect(_on_tutorial_finished, CONNECT_ONE_SHOT)
-		tutorial_overlay.show_tutorial()
-	else:
-		main_menu.show_menu()
-
-
-func _on_tutorial_finished() -> void:
-	main_menu.show_menu()
+	_screens.show_start_screen()
 
 
 func _on_viewport_resized() -> void:
@@ -347,6 +337,8 @@ func _update_os_mouse_visibility() -> void:
 		and InputBindings.get_control_mode(0) == InputBindings.PlayerControlMode.KEYBOARD_MOUSE
 		and not escape_menu.visible
 		and not settings_menu.visible
+		and not trapulator.is_open
+		and not _map_open
 		and (game_over == null or not game_over.visible)
 	)
 	if hide_mouse:

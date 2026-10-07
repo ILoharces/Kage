@@ -49,7 +49,7 @@ const COUNTERS: Array[Texture2D] = [
 	preload("res://art/items/counter_wrench.png"),
 	preload("res://art/items/counter_umbrella.png"),
 	preload("res://art/items/counter_tongs.png"),
-	preload("res://art/items/counter_mask.png"),
+	preload("res://art/items/counter_mask.png"), # Desactivador (placeholder)
 ]
 
 
@@ -71,17 +71,20 @@ static func trap_texture(trap_id: int) -> Texture2D:
 	return _at(TRAPS, trap_id)
 
 
+static func counter_texture(counter_id: int) -> Texture2D:
+	return _at(COUNTERS, counter_id)
+
+
 static func icon_for_held(held: HeldInventory) -> Texture2D:
 	if held == null or not held.is_holding():
 		return null
-	if held.is_holding_suitcase():
-		return item_texture(ItemDB.ItemId.SUITCASE)
-	if held.kind == HeldInventory.Kind.ITEM:
-		return item_texture(held.held_id)
-	if held.kind == HeldInventory.Kind.TRAP:
-		return _at(TRAPS, held.held_id)
-	if held.kind == HeldInventory.Kind.COUNTER:
-		return _at(COUNTERS, held.held_id)
+	match held.kind:
+		HeldInventory.Kind.SUITCASE, HeldInventory.Kind.ITEM:
+			return item_texture(held.held_id)
+		HeldInventory.Kind.TRAP:
+			return trap_texture(held.held_id)
+		HeldInventory.Kind.COUNTER:
+			return counter_texture(held.held_id)
 	return null
 
 

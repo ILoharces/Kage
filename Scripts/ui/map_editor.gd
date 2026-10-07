@@ -59,6 +59,7 @@ const GAMEPAD_AXIS_DEADZONE: float = 0.35
 @onready var _status_label: Label = %StatusLabel
 @onready var _hint_label: Label = %Hint
 @onready var _mode_label: Label = %ModeLabel
+@onready var _title_label: Label = %Title
 @onready var _ai_play_button: Button = %AiPlayButton
 @onready var _local_play_button: Button = %LocalPlayButton
 
@@ -79,6 +80,9 @@ var _nav_repeat_timer: float = 0.0
 var _pending_action: PendingAction = PendingAction.NONE
 var _pending_layout: LevelLayout = null
 var _pending_save_name: String = ""
+var _dirty: bool = false
+var _mode_group: ButtonGroup = null
+var _play_group: ButtonGroup = null
 
 
 func _ready() -> void:
@@ -132,12 +136,32 @@ func _ready() -> void:
 	_update_status()
 
 
-func show_editor() -> void:
+## Abre el editor; con `map_id` carga ese mapa guardado.
+func show_editor(map_id: String = "") -> void:
 	_set_play_against_ai(GameSettings.use_ai_default)
 	visible = true
+	if not map_id.is_empty():
+		_load_map_by_id(map_id)
 	_grid.reset_cursor()
 	_set_device_mode(DeviceMode.MOUSE)
 	_set_input_mode(InputMode.GRID)
+
+
+func _load_map_by_id(map_id: String) -> void:
+	var data: Dictionary = MapStorage.load_map_data(map_id)
+	if data.is_empty():
+		_notify("No se pudo abrir el mapa.")
+		return
+	_grid.import_state(data)
+	_set_mode_index(0)
+	_current_map_id = map_id
+	_current_map_name = String(data.get("name", map_id))
+	_dirty = false
+	_notify("Editando: %s" % _current_map_name)
+
+
+func _notify(text: String) -> void:
+	_status_label.text = text
 
 
 func hide_editor() -> void:
@@ -252,9 +276,10 @@ func _build_save_dialog() -> void:
 	box.add_child(label)
 	_save_name_edit = LineEdit.new()
 	_save_name_edit.custom_minimum_size = Vector2(280, 32)
-	_save_name_edit.placeholder_text = "mi_mapa"
+	_save_name_edit.placeholder_text = "Mi mansión"
 	box.add_child(_save_name_edit)
 	_save_dialog.add_child(box)
+	_save_dialog.register_text_enter(_save_name_edit)
 	_save_dialog.confirmed.connect(_on_save_confirmed)
 	add_child(_save_dialog)
 
@@ -282,25 +307,38 @@ func _build_connectivity_dialog() -> void:
 
 
 func _on_back_pressed() -> void:
+	if not _dirty:
+		_close_editor()
+		return
+	UiKit.confirm(
+		self,
+		"Cambios sin guardar",
+		"Si sales ahora se pierden los cambios del mapa.",
+		"Salir sin guardar",
+		_close_editor
+	)
+
+
+func _close_editor() -> void:
+	_dirty = false
 	hide_editor()
 	editor_closed.emit()
 
 
 func _on_save_pressed() -> void:
 	if _grid.get_room_cells().is_empty():
-		_status_label.text = "Anade habitaciones antes de guardar."
+		_notify("Añade habitaciones antes de guardar.")
 		return
-	if not _current_map_name.is_empty():
-		_save_name_edit.text = _current_map_name
-	else:
-		_save_name_edit.text = ""
+	_save_name_edit.text = _current_map_name
 	_save_dialog.popup_centered()
+	_save_name_edit.grab_focus.call_deferred()
+	_save_name_edit.select_all.call_deferred()
 
 
 func _on_save_confirmed() -> void:
 	var map_name: String = _save_name_edit.text.strip_edges()
 	if map_name.is_empty():
-		_status_label.text = "Escribe un nombre para guardar."
+		_notify("Escribe un nombre para guardar.")
 		return
 	var layout: LevelLayout = _build_layout_from_grid()
 	if _maybe_warn_unreachable(layout, PendingAction.SAVE, map_name):
@@ -311,19 +349,31 @@ func _on_save_confirmed() -> void:
 func _finish_save(map_name: String) -> void:
 	var map_id: String = MapStorage.save_map(map_name, _grid.export_state())
 	if map_id.is_empty():
-		_status_label.text = "No se pudo guardar el mapa."
+		_notify("No se pudo guardar el mapa.")
 		return
 	_current_map_id = map_id
 	_current_map_name = map_name
-	_status_label.text = "Mapa guardado: %s" % map_name
+	_dirty = false
+	_update_status()
+	_notify("Guardado: %s" % map_name)
 
 
 func _on_load_pressed() -> void:
+	if _dirty:
+		UiKit.confirm(self, "Cambios sin guardar", "Cargar otro mapa descarta los cambios actuales.", "Descartar", _open_load_dialog)
+		return
+	_open_load_dialog()
+
+
+func _open_load_dialog() -> void:
 	_refresh_load_list()
 	if _load_entries.is_empty():
-		_status_label.text = "No hay mapas guardados."
+		_notify("No hay mapas guardados.")
 		return
 	_load_dialog.popup_centered()
+	if _load_list.item_count > 0:
+		_load_list.select(0)
+	_load_list.grab_focus.call_deferred()
 
 
 func _refresh_load_list() -> void:
@@ -355,7 +405,9 @@ func _apply_load_index(index: int) -> void:
 	_set_mode_index(0)
 	_current_map_id = String(entry.get("id", ""))
 	_current_map_name = String(entry.get("label", _current_map_id))
-	_status_label.text = "Mapa cargado: %s" % _current_map_name
+	_dirty = false
+	_update_status()
+	_notify("Cargado: %s" % _current_map_name)
 
 
 func _set_mode_index(index: int) -> void:
@@ -375,8 +427,6 @@ func _sync_mode_buttons() -> void:
 	_exit_button.set_pressed_no_signal(mode == MapEditorGrid.PlaceMode.EXIT)
 	_player_button.set_pressed_no_signal(mode == MapEditorGrid.PlaceMode.PLAYER1)
 	_ai_button.set_pressed_no_signal(mode == MapEditorGrid.PlaceMode.PLAYER2)
-	for button: Button in [_build_button, _exit_button, _player_button, _ai_button]:
-		NesUiTheme.refresh_toggle_button(button)
 
 
 func _clear_mode_buttons() -> void:
@@ -386,63 +436,60 @@ func _clear_mode_buttons() -> void:
 func _on_build_mode_toggled(pressed: bool) -> void:
 	if pressed:
 		_set_mode_index(0)
-	elif _mode_index == 0:
-		_build_button.set_pressed_no_signal(true)
 
 
 func _on_exit_mode_toggled(pressed: bool) -> void:
 	if pressed:
 		_set_mode_index(MODES.find(MapEditorGrid.PlaceMode.EXIT))
-	else:
-		_set_mode_index(0)
 
 
 func _on_player_mode_toggled(pressed: bool) -> void:
 	if pressed:
 		_set_mode_index(MODES.find(MapEditorGrid.PlaceMode.PLAYER1))
-	else:
-		_set_mode_index(0)
 
 
 func _on_ai_mode_toggled(pressed: bool) -> void:
 	if pressed:
 		_set_mode_index(MODES.find(MapEditorGrid.PlaceMode.PLAYER2))
-	else:
-		_set_mode_index(0)
 
 
 func _on_connect_all_pressed() -> void:
 	if _grid.get_room_cells().is_empty():
-		_status_label.text = "Anade habitaciones antes de conectar."
+		_notify("Añade habitaciones antes de conectar.")
 		return
 	var added: int = _grid.connect_all_adjacent()
 	if added == 0:
-		_status_label.text = "Todas las habitaciones vecinas ya estan conectadas."
+		_notify("Todas las habitaciones vecinas ya están conectadas.")
 	else:
+		_dirty = true
 		_update_status()
+		_notify("%d puerta(s) añadidas." % added)
 
 
 func _on_door_count_toggled(pressed: bool) -> void:
 	_grid.set_door_count_overlay_enabled(pressed)
-	NesUiTheme.refresh_toggle_button(_door_count_button)
-	if pressed:
-		_status_label.text = (
-			"Oscuro (0 puertas) → verde claro (4). La salida no cuenta."
-		)
-	else:
-		_update_status()
+	_notify("Oscuro = 0 puertas, verde claro = 4. La salida no cuenta." if pressed else "")
 
 
 func _on_clear_pressed() -> void:
+	if _grid.get_room_cells().is_empty():
+		return
+	UiKit.confirm(self, "Vaciar mapa", "Se borran todas las habitaciones, puertas y spawns.", "Vaciar", _clear_map)
+
+
+func _clear_map() -> void:
 	_grid.clear_all()
 	_clear_mode_buttons()
 	_current_map_id = ""
 	_current_map_name = ""
+	_dirty = false
 	_update_status()
+	_notify("Mapa vacío.")
 
 
 func _on_grid_changed(_arg1: Variant = null, _arg2: Variant = null, _arg3: Variant = null) -> void:
 	_grid.clear_unreachable_highlight()
+	_dirty = true
 	_update_status()
 
 
@@ -478,29 +525,27 @@ func _update_status() -> void:
 	var player_gp: Vector2i = _grid.get_player_spawn_cell()
 	var ai_gp: Vector2i = _grid.get_ai_spawn_cell()
 	var cursor_gp: Vector2i = _grid.get_cursor_cell()
-	var saved_hint: String = ""
-	if not _current_map_id.is_empty():
-		saved_hint = "  |  Guardado: %s" % _current_map_id
+	var map_title: String = _current_map_name if not _current_map_name.is_empty() else "Mapa nuevo"
+	_title_label.text = "%s%s" % [map_title, " *" if _dirty else ""]
 	_mode_label.text = MODE_LABELS[_mode_index]
 	var mode_hints: Array[String] = MODE_HINTS_MOUSE if _device_mode == DeviceMode.MOUSE else MODE_HINTS
 	_mode_hint.text = mode_hints[_mode_index]
 	_stats_label.text = (
-		"Habitaciones: %d  Puertas: %d  Salida: %s  J1: %s  J2: %s%s"
-		% [room_count, door_count, exit_text, _cell_text(player_gp), _cell_text(ai_gp), saved_hint]
+		"Habitaciones: %d   Puertas: %d   Salida: %s   J1: %s   J2: %s   Cursor: %s"
+		% [room_count, door_count, exit_text, _cell_text(player_gp), _cell_text(ai_gp), _cell_text(cursor_gp)]
 	)
-	_status_label.text = "Cursor: %s" % _cell_text(cursor_gp)
+	if _dirty:
+		_status_label.text = "Hay cambios sin guardar."
 	match _input_mode:
 		InputMode.GRID:
 			if _device_mode == DeviceMode.MOUSE:
-				_hint_label.text = "Ratón: click en celdas y bordes  |  Botones laterales: modos y acciones"
+				_hint_label.text = "Clic: editar   ·   1-4: modo   ·   Ctrl+S: guardar   ·   Esc: salir"
 			else:
 				_hint_label.text = (
-					"Stick L: mover  |  Stick R: borde  |  A: editar  |  B: menu  |  LB/RB: modo  |  Start: jugar"
+					"Stick L: mover   ·   Stick R: borde   ·   A: editar   ·   B: menú   ·   LB/RB: modo   ·   Start: jugar"
 				)
 		InputMode.MENU:
-			_hint_label.text = (
-				"Arriba/abajo: sidebar  |  Der: Cargar / Izq: Guardar  |  Abajo desde Cargar/Guardar: sidebar  |  B: rejilla"
-			)
+			_hint_label.text = "Arriba/abajo: botones   ·   Izq./der.: Cargar y Guardar   ·   B: volver a la rejilla"
 
 
 func _build_layout_from_grid() -> LevelLayout:
@@ -590,30 +635,24 @@ func _set_play_against_ai(use_ai: bool) -> void:
 	GameState.use_ai = use_ai
 	_ai_play_button.set_pressed_no_signal(use_ai)
 	_local_play_button.set_pressed_no_signal(not use_ai)
-	NesUiTheme.refresh_toggle_button(_ai_play_button)
-	NesUiTheme.refresh_toggle_button(_local_play_button)
 
 
 func _on_ai_play_toggled(pressed: bool) -> void:
 	if pressed:
 		_set_play_against_ai(true)
-	elif not _local_play_button.button_pressed:
-		_ai_play_button.set_pressed_no_signal(true)
 
 
 func _on_local_play_toggled(pressed: bool) -> void:
 	if pressed:
 		_set_play_against_ai(false)
-	elif not _ai_play_button.button_pressed:
-		_local_play_button.set_pressed_no_signal(true)
 
 
 func _on_play_pressed() -> void:
 	if _grid.get_room_cells().is_empty():
-		_status_label.text = "Anade al menos una habitacion."
+		_notify("Añade al menos una habitación.")
 		return
 	if _grid.get_exit_door().is_empty():
-		_status_label.text = "Coloca una salida en modo Salida antes de jugar."
+		_notify("Coloca una salida en modo Salida antes de jugar.")
 		return
 	GameState.use_ai = _ai_play_button.button_pressed
 	var layout: LevelLayout = _build_layout_from_grid()
@@ -629,6 +668,7 @@ func _finish_play(layout: LevelLayout) -> void:
 
 func _handle_cancel() -> void:
 	if _device_mode == DeviceMode.MOUSE:
+		_on_back_pressed()
 		return
 	if _input_mode == InputMode.GRID:
 		_set_input_mode(InputMode.MENU)
@@ -658,7 +698,6 @@ func _detect_device_from_event(event: InputEvent) -> void:
 			or event.is_action("ui_left")
 			or event.is_action("ui_right")
 			or event.is_action("ui_accept")
-			or event.is_action("ui_cancel")
 		):
 			_set_device_mode(DeviceMode.GAMEPAD)
 
@@ -691,7 +730,13 @@ func _handle_grid_button(event: InputEvent) -> bool:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or _dialog_open():
 		return
+	if _handle_editor_shortcuts(event):
+		get_viewport().set_input_as_handled()
+		return
 	if _device_mode == DeviceMode.MOUSE:
+		if event.is_action_pressed("ui_cancel"):
+			_on_back_pressed()
+			get_viewport().set_input_as_handled()
 		return
 	if _input_mode == InputMode.GRID:
 		if _handle_grid_button(event):
@@ -710,25 +755,40 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+func _handle_editor_shortcuts(event: InputEvent) -> bool:
+	if not event is InputEventKey or not event.is_pressed() or event.is_echo():
+		return false
+	var key_event: InputEventKey = event as InputEventKey
+	if key_event.ctrl_pressed and key_event.keycode == KEY_S:
+		_on_save_pressed()
+		return true
+	if key_event.ctrl_pressed or key_event.alt_pressed:
+		return false
+	match key_event.keycode:
+		KEY_1:
+			_set_mode_index(0)
+			return true
+		KEY_2:
+			_set_mode_index(1)
+			return true
+		KEY_3:
+			_set_mode_index(2)
+			return true
+		KEY_4:
+			_set_mode_index(3)
+			return true
+	return false
+
+
 func _apply_ui_theme() -> void:
-	_panel.add_theme_stylebox_override(
-		"panel",
-		NesUiTheme.panel_style(Color(0.05, 0.05, 0.07, 1.0), NesUiTheme.COLOR_BORDER)
-	)
-	_grid_frame.add_theme_stylebox_override(
-		"panel",
-		NesUiTheme.panel_style(MapEditorGrid.COLOR_BG, NesUiTheme.COLOR_BORDER_DARK, 4)
-	)
-	_play_button.add_theme_color_override("font_color", Color(0.55, 0.95, 0.65, 1.0))
-	NesUiTheme.style_toggle_buttons([
-		_build_button,
-		_exit_button,
-		_player_button,
-		_ai_button,
-		_door_count_button,
-		_ai_play_button,
-		_local_play_button,
-	])
+	_grid_frame.theme_type_variation = &"InsetPanel"
+	_play_button.theme_type_variation = &"PrimaryButton"
+	_mode_group = ButtonGroup.new()
+	for button: Button in [_build_button, _exit_button, _player_button, _ai_button]:
+		button.button_group = _mode_group
+	_play_group = ButtonGroup.new()
+	_ai_play_button.button_group = _play_group
+	_local_play_button.button_group = _play_group
 
 
 func _wire_menu_focus() -> void:

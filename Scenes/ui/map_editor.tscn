@@ -16,7 +16,7 @@ grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="Center"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(820, 580)
+custom_minimum_size = Vector2(1100, 720)
 
 [node name="Margin" type="MarginContainer" parent="Center/Panel"]
 theme_override_constants/margin_left = 16
@@ -36,8 +36,9 @@ custom_minimum_size = Vector2(96, 36)
 text = "Volver"
 
 [node name="Title" type="Label" parent="Center/Panel/Margin/RootVBox/TopBar"]
+unique_name_in_owner = true
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeaderLabel"
 text = "Creador de mapas"
 horizontal_alignment = 1
 vertical_alignment = 1

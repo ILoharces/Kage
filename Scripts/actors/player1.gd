@@ -1,7 +1,7 @@
 extends SpyBase
 class_name Player
 
-# R: rueda de trampas | Q: colocar | Tab: Trapulator | E: inspeccionar / recoger del suelo
+# R: rueda de trampas y contramedidas | Q: colocar | Tab: Trapulator | E: inspeccionar / recoger del suelo
 
 var input_blocked: bool = false
 
@@ -13,10 +13,19 @@ func _ready() -> void:
 	add_to_group("player")
 
 
+func accepts_input() -> bool:
+	return is_alive and not input_blocked and GameState.running and not GameState.map_overlay_open
+
+
 func _compute_input_vector() -> Vector2:
-	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
+	if not accepts_input():
 		return Vector2.ZERO
-	return Input.get_vector("move_left", "move_right", "move_up", "move_down", 0.16)
+	var actions: PackedStringArray = _get_move_actions()
+	return Input.get_vector(actions[0], actions[1], actions[2], actions[3], 0.16)
+
+
+func _get_move_actions() -> PackedStringArray:
+	return PackedStringArray(["move_left", "move_right", "move_up", "move_down"])
 
 
 func _process(delta: float) -> void:
@@ -30,7 +39,7 @@ func _process(delta: float) -> void:
 
 
 func _poll_combat_input() -> void:
-	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
+	if not accepts_input():
 		return
 	var weapon: WeaponData = combat.get_equipped_weapon_data() if combat != null else null
 	if weapon != null and weapon.orbital_strike:
@@ -72,19 +81,11 @@ func get_fire_action_name() -> String:
 
 
 func can_open_trap_wheel() -> bool:
-	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
-		return false
-	if orbital_targeting:
-		return false
-	return true
+	return accepts_input() and not orbital_targeting
 
 
 func _poll_world_input(wheel_blocks: bool = false) -> void:
-	if wheel_blocks:
-		return
-	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
-		return
-	if orbital_targeting:
+	if wheel_blocks or not accepts_input() or orbital_targeting:
 		return
 	if Input.is_action_just_pressed(_get_interact_action()):
 		interact_with_nearby()

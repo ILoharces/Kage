@@ -56,13 +56,9 @@ func start_cooldown(duration: float) -> void:
 	cooldown_timer = maxf(duration, 0.0)
 
 
-func process_cooldown(delta: float) -> void:
+func tick_cooldown(delta: float) -> void:
 	if cooldown_timer > 0.0:
 		cooldown_timer = maxf(0.0, cooldown_timer - delta)
-
-
-func tick_cooldown(delta: float) -> void:
-	process_cooldown(delta)
 
 
 var equipped_weapon_id: StringName:
@@ -122,33 +118,26 @@ func apply_weapon_knockback(direction: Vector2, force: float) -> void:
 	host.knockback_timer = SpyBase.KNOCKBACK_DURATION
 
 
-func kill_from_trap(trap_id: int) -> void:
-	GameState.notify_human(host.spy_id, "Te alcanza la temporizada")
-	_die_from_trap(trap_id)
-
-
+## Efecto de una trampa ya resuelta. Las contramedidas se comprueban antes, en TrapRules.
 func apply_trap_effect(trap_id: int, effect_origin: Vector2 = Vector2.ZERO) -> void:
 	if not host.is_alive:
 		return
+	var origin: Vector2 = effect_origin if effect_origin != Vector2.ZERO else host.global_position
+	GameState.notify_human(host.spy_id, ItemDB.get_trap_hit_notice(trap_id))
 	match trap_id:
 		ItemDB.TrapId.BOMB:
-			_trigger_bomb_trap(effect_origin)
+			_spawn_trap_explosion(origin)
+			Sfx.play_bomb_exploded()
+			_die_from_trap(trap_id)
 		ItemDB.TrapId.SPRING:
 			_trigger_spring_trap()
 		ItemDB.TrapId.BUCKET:
 			_trigger_bucket_trap()
 		ItemDB.TrapId.GUN:
-			_trigger_cartridge_trap(effect_origin)
-	GameState.notify_human(host.spy_id, _hit_notice(trap_id))
-
-
-func _trigger_bomb_trap(effect_origin: Vector2) -> void:
-	var origin: Vector2 = effect_origin
-	if origin == Vector2.ZERO:
-		origin = host.global_position
-	_spawn_trap_explosion(origin)
-	Sfx.play_bomb_exploded()
-	_die_from_trap(ItemDB.TrapId.BOMB)
+			_spawn_trap_explosion(origin)
+			_apply_trap_damage(CARTRIDGE_DAMAGE, trap_id)
+		ItemDB.TrapId.TIMED:
+			_die_from_trap(trap_id)
 
 
 func _trigger_spring_trap() -> void:
@@ -159,44 +148,16 @@ func _trigger_spring_trap() -> void:
 
 
 func _trigger_bucket_trap() -> void:
-	if host.held != null:
-		if host.held.is_holding_weapon():
-			GameState.drop_weapon_from_hands(host)
-		elif host.held.is_holding_carried() and host.current_room != null:
-			if GameState.drop_carried_to_ground(host.spy_id, host.current_room, host.global_position, host.held):
-				host.emit_held_changed()
-		elif host.held.is_holding_trap():
-			host.held.release_trap()
-			host.refresh_hands_from_inventory()
-			host.emit_held_changed()
+	GameState.empty_hands(host)
+	host.refresh_hands_from_inventory()
 	host.slow_timer = BUCKET_SLOW
 
 
-func _trigger_cartridge_trap(effect_origin: Vector2) -> void:
-	var origin: Vector2 = effect_origin
-	if origin == Vector2.ZERO:
-		origin = host.global_position
-	_spawn_trap_explosion(origin)
-	if not host.is_alive:
-		return
-	host.health = maxf(0.0, host.health - CARTRIDGE_DAMAGE)
+func _apply_trap_damage(amount: float, trap_id: int) -> void:
+	host.health = maxf(0.0, host.health - amount)
 	host.health_changed.emit(host.health, SpyBase.MAX_HEALTH)
 	if host.health <= 0.0:
-		_die_from_trap(ItemDB.TrapId.GUN)
-
-
-func _hit_notice(trap_id: int) -> String:
-	var trap_name: String = String(ItemDB.TRAP_NAMES.get(trap_id, "Trampa"))
-	match trap_id:
-		ItemDB.TrapId.SPRING:
-			return "Te tumba el muelle"
-		ItemDB.TrapId.BUCKET:
-			return "Te cae el cubo"
-		ItemDB.TrapId.BOMB:
-			return "Explota la bomba"
-		ItemDB.TrapId.GUN:
-			return "Te dispara el cartucho"
-	return "Te afecta: %s" % trap_name
+		_die_from_trap(trap_id)
 
 
 func _spawn_trap_explosion(origin: Vector2) -> void:
@@ -227,26 +188,19 @@ func _enter_death_state() -> void:
 
 
 func _die_from_trap(trap_id: int) -> void:
+	_die(GameState.WINNER_NONE, trap_id, &"")
+
+
+func _die_from_weapon(source_spy_id: int, weapon_id: StringName) -> void:
+	_die(source_spy_id, -1, weapon_id)
+
+
+func _die(killer_id: int, trap_id: int, weapon_id: StringName) -> void:
 	if not host.is_alive:
 		return
 	GameState.drop_all_loot_on_death(host)
 	_enter_death_state()
-	GameState.notify_spy_died(host.spy_id, GameState.WINNER_NONE, trap_id, &"")
+	GameState.notify_spy_died(host.spy_id, killer_id, trap_id, weapon_id)
 	host.emit_held_changed()
 	host.emit_weapon_changed()
-	_request_respawn()
-
-
-func _die_from_weapon(source_spy_id: int, _weapon_id: StringName) -> void:
-	if not host.is_alive:
-		return
-	GameState.drop_all_loot_on_death(host)
-	_enter_death_state()
-	GameState.notify_spy_died(host.spy_id, source_spy_id, -1, _weapon_id)
-	host.emit_held_changed()
-	host.emit_weapon_changed()
-	_request_respawn()
-
-
-func _request_respawn() -> void:
 	GameState.start_respawn(host)

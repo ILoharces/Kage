@@ -1,162 +1,204 @@
-extends CanvasLayer
+extends MenuScreen
 class_name TutorialOverlay
 
-# Tutorial de primera ejecucion: ventanas de texto por pasos antes del menu principal.
+# "Cómo jugar": páginas con las teclas reales (teclado / mando) y las trampas de ItemDB.
 
 signal finished
 
-const OVERLAY_COLOR: Color = Color(0.0, 0.0, 0.0, 0.72)
-const PANEL_MIN_SIZE: Vector2 = Vector2(560, 320)
+const KEY_COLOR: String = "#ffd54f"
+const PANEL_SIZE: Vector2 = Vector2(760, 520)
 
-const _STEPS: Array[Dictionary] = [
-	{
-		"title": "Bienvenido a Kage",
-		"body": (
-			"Kage es un prototipo de espias en una mansion, inspirado en Spy vs Spy.\n\n"
-			+ "Esta version es extremadamente cruda: hay muchos errores, sistemas "
-			+ "incompletos y comportamientos inesperados. Gracias por probarla y "
-			+ "reportar lo que falle."
-		),
-	},
-	{
-		"title": "Aviso importante",
-		"body": (
-			"El respawn todavia no funciona bien. Puede fallar el reaparecer, "
-			+ "teletransportarte a sitios raros o restar tiempo de forma confusa.\n\n"
-			+ "No esperes pulido en muertes y reapariciones; estamos depurandolo."
-		),
-	},
-	{
-		"title": "De que va el juego",
-		"body": (
-			"Dos espias (blanco vs negro) compiten en la misma mansion.\n\n"
-			+ "Objetivo: reunir el maletín, la llave, el dinero y el pasaporte. "
-			+ "Sin maletín solo cabe un objeto en la mano; con él se guarda el resto. "
-			+ "Escapa por la puerta de salida con todo el botín.\n\n"
-			+ "Cada espia tiene unos 5 minutos de reloj personal. Ganas escapando o si "
-			+ "el rival se queda sin tiempo."
-		),
-	},
-	{
-		"title": "Controles",
-		"body": (
-			"Jugador 1 (blanco): WASD mover; raton apunta dentro de las ventanas de "
-			+ "vista; clic izquierdo dispara; E interactuar; Q coloca; mantén R para la rueda de trampas; Tab trapulator; "
-			+ "M mapa; Esc pausa.\n\n"
-			+ "Jugador 2 (negro, sin IA): flechas mover; O disparar. El apuntado con "
-			+ "solo teclado esta muy limitado; se recomienda mando (stick derecho apunta, "
-			+ "RT dispara, R3 cambia modo de mirilla).\n\n"
-			+ "Modos de control en Ajustes."
-		),
-	},
-	{
-		"title": "Armas",
-		"body": (
-			"Las armas aparecen en el mapa: recogelas y equipalas en las manos. La "
-			+ "mirilla solo se mueve dentro de las dos ventanas de vista (blanco y negro).\n\n"
-			+ "Pistola y metralleta: apunta y dispara con clic izquierdo (P1) o RT (mando).\n\n"
-			+ "Canon orbital (laser): pulsa disparar para armarlo, mueve la mirilla a la "
-			+ "ventana del rival y apunta a la habitacion donde esta (o donde crees que "
-			+ "estara); vuelve a disparar para lanzar el rayo. Golpea sin estar en la misma "
-			+ "sala. Solo lleva un disparo por carga.\n\n"
-			+ "Matar al rival no termina la partida: suelta todo su botin y le penaliza el "
-			+ "reloj. Tras morir reaparece en una habitacion aleatoria (con los problemas "
-			+ "del respawn que comentamos)."
-		),
-	},
-	{
-		"title": "Trampas y HUD",
-		"body": (
-			"Mantén R para abrir la rueda donde está el cursor. Mueve el ratón a una trampa y suelta R o haz clic para equiparla. En el centro o fuera de la rueda se cierra sin cambiar nada. Q coloca la trampa equipada. Tab abre el trapulator.\n\n"
-			+ "El mapa (M) muestra la mansion.\n\n"
-			+ "El HUD muestra inventario, tiempo y estado de cada espia.\n\n"
-			+ "La victoria es por escape con todo el botín o por agotar el tiempo del "
-			+ "rival, no por una sola muerte. Pulsa Entendido para ir al menu."
-		),
-	},
-]
-
-@onready var _overlay: ColorRect = %Overlay
-@onready var _panel: PanelContainer = %Panel
-@onready var _title_label: Label = %TitleLabel
-@onready var _body_label: Label = %BodyLabel
-@onready var _page_label: Label = %PageLabel
-@onready var _skip_button: Button = %SkipButton
-@onready var _next_button: Button = %NextButton
-
-var _step_index: int = 0
+var _pages: Array[Dictionary] = []
+var _page_index: int = 0
+var _title_label: Label = null
+var _body: RichTextLabel = null
+var _dots: Label = null
+var _back_button: Button = null
+var _skip_button: Button = null
+var _next_button: Button = null
 
 
 func _ready() -> void:
 	layer = 35
-	process_mode = Node.PROCESS_MODE_ALWAYS
-	visible = false
-	_overlay.color = OVERLAY_COLOR
-	_panel.custom_minimum_size = PANEL_MIN_SIZE
-	_panel.add_theme_stylebox_override("panel", NesUiTheme.panel_style())
-	_title_label.add_theme_font_override("font", NesUiTheme.ui_font())
-	_title_label.add_theme_font_size_override("font_size", 22)
-	_title_label.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT)
-	_body_label.add_theme_font_override("font", NesUiTheme.ui_font())
-	_body_label.add_theme_font_size_override("font_size", NesUiTheme.FONT_LABEL)
-	_body_label.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT)
-	_page_label.add_theme_font_override("font", NesUiTheme.mono_font())
-	_page_label.add_theme_font_size_override("font_size", NesUiTheme.FONT_LABEL)
-	_page_label.add_theme_color_override("font_color", NesUiTheme.COLOR_BORDER)
-	_skip_button.pressed.connect(_on_skip_pressed)
+	super._ready()
+
+
+func _build() -> void:
+	UiKit.dim_backdrop(root, 0.75)
+	var content: VBoxContainer = UiKit.centered_panel(root, PANEL_SIZE, 14)
+	_title_label = UiKit.label("", &"HeaderLabel", HORIZONTAL_ALIGNMENT_CENTER)
+	content.add_child(_title_label)
+	content.add_child(HSeparator.new())
+	_body = RichTextLabel.new()
+	_body.bbcode_enabled = true
+	_body.fit_content = false
+	_body.scroll_active = true
+	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_body.custom_minimum_size = Vector2(0, 340)
+	_body.add_theme_constant_override("line_separation", 6)
+	_body.add_theme_color_override("default_color", NesUiTheme.COLOR_TEXT)
+	_body.add_theme_font_size_override("normal_font_size", UiThemeBuilder.FONT_SIZE)
+	content.add_child(_body)
+	_dots = UiKit.label("", &"SectionLabel", HORIZONTAL_ALIGNMENT_CENTER)
+	content.add_child(_dots)
+	var actions: HBoxContainer = UiKit.hbox(12)
+	content.add_child(actions)
+	_skip_button = UiKit.button("Saltar", &"", 140.0)
+	_skip_button.pressed.connect(_finish)
+	actions.add_child(_skip_button)
+	actions.add_child(UiKit.spacer(0.0, true))
+	_back_button = UiKit.button("Atrás", &"", 140.0)
+	_back_button.pressed.connect(func() -> void: _go_to(_page_index - 1))
+	actions.add_child(_back_button)
+	_next_button = UiKit.button("Siguiente", &"PrimaryButton", 180.0)
 	_next_button.pressed.connect(_on_next_pressed)
+	actions.add_child(_next_button)
+	var chain: Array[Control] = [_skip_button, _back_button, _next_button]
+	UiKit.chain_focus(chain, true, false)
 
 
 func show_tutorial() -> void:
-	_step_index = 0
-	_apply_step()
-	visible = true
-	_next_button.grab_focus()
-
-
-func reset_and_show() -> void:
-	show_tutorial()
+	_pages = _build_pages()
+	_page_index = 0
+	show_menu()
+	_apply_page()
 
 
 func is_showing() -> bool:
 	return visible
 
 
-func _apply_step() -> void:
-	var step: Dictionary = _STEPS[_step_index]
-	_title_label.text = String(step.get("title", ""))
-	_body_label.text = String(step.get("body", ""))
-	var total: int = _STEPS.size()
-	_page_label.text = "%d / %d" % [_step_index + 1, total]
-	var is_last: bool = _step_index >= total - 1
-	_next_button.text = "Entendido" if is_last else "Siguiente"
+func _initial_focus() -> Control:
+	return _next_button
 
 
-func _on_skip_pressed() -> void:
-	_finish_tutorial()
+func _on_cancel() -> void:
+	_finish()
 
 
 func _on_next_pressed() -> void:
-	if _step_index >= _STEPS.size() - 1:
-		_finish_tutorial()
-		return
-	_step_index += 1
-	_apply_step()
-	_next_button.grab_focus()
+	if _page_index >= _pages.size() - 1:
+		_finish()
+	else:
+		_go_to(_page_index + 1)
 
 
-func _finish_tutorial() -> void:
+func _go_to(index: int) -> void:
+	_page_index = clampi(index, 0, _pages.size() - 1)
+	_apply_page()
+
+
+func _apply_page() -> void:
+	var page: Dictionary = _pages[_page_index]
+	_title_label.text = String(page.get("title", ""))
+	_body.text = String(page.get("body", ""))
+	_body.scroll_to_line(0)
+	var dots: PackedStringArray = PackedStringArray()
+	for i: int in _pages.size():
+		dots.append("●" if i == _page_index else "○")
+	_dots.text = "  ".join(dots)
+	var is_last: bool = _page_index >= _pages.size() - 1
+	_next_button.text = "¡A jugar!" if is_last else "Siguiente"
+	_back_button.disabled = _page_index == 0
+	if _back_button.disabled and _back_button.has_focus():
+		_next_button.grab_focus()
+
+
+func _finish() -> void:
 	GameSettings.mark_tutorial_completed()
-	visible = false
+	hide_menu()
 	finished.emit()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
-		return
-	if event.is_action_pressed("ui_accept"):
-		_on_next_pressed()
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("ui_cancel"):
-		_on_skip_pressed()
-		get_viewport().set_input_as_handled()
+# --- Contenido ----------------------------------------------------------------
+
+func _key(action: String) -> String:
+	var keyboard: String = InputBindings.get_slot_short_label(action, false)
+	var gamepad: String = InputBindings.get_slot_short_label(action, true)
+	return "[color=%s]%s[/color] / [color=%s]%s[/color]" % [KEY_COLOR, keyboard, KEY_COLOR, gamepad]
+
+
+func _hl(text: String) -> String:
+	return "[color=%s]%s[/color]" % [KEY_COLOR, text]
+
+
+func _build_pages() -> Array[Dictionary]:
+	var pages: Array[Dictionary] = []
+	pages.append({
+		"title": "Bienvenido a Kage",
+		"body": (
+			"Dos espías, [b]Blanco[/b] y [b]Negro[/b], se cuelan en la misma mansión.\n\n"
+			+ "Gana quien escape primero con todo el botín. Por el camino podéis llenar la casa "
+			+ "de trampas y usar armas para frenar al otro.\n\n"
+			+ "Las teclas aparecen así: %s (teclado / mando)." % _key("interact")
+		),
+	})
+	pages.append({
+		"title": "El objetivo",
+		"body": (
+			"Reúne [b]%s[/b].\n\n" % ", ".join(_item_names())
+			+ "Sin maletín solo cabe un objeto en las manos; con él guardas todos.\n\n"
+			+ "Sal por la puerta de salida (verde en el mapa) con el botín completo.\n\n"
+			+ "Cada espía tiene su propio reloj: si se agota, pierde. Morir no acaba la partida, "
+			+ "pero sueltas lo que llevabas, pierdes tiempo y reapareces en otra sala."
+		),
+	})
+	pages.append({
+		"title": "Moverse y registrar",
+		"body": (
+			"Mover: %s / %s\n\n" % [_hl("WASD"), _hl("Stick L")]
+			+ "Interactuar: %s. Registra muebles, abre puertas y recoge lo que haya en el suelo. "
+			% _key("interact")
+			+ "En el panel de tu espía verás qué acción tienes disponible.\n\n"
+			+ "Mapa de la mansión: %s\n\n" % _key("toggle_map")
+			+ "Pausa: %s" % _key("pause_menu")
+		),
+	})
+	pages.append({
+		"title": "Trampas",
+		"body": (
+			"Mantén %s para abrir la rueda y suelta sobre una trampa para cogerla. "
+			% _key("next_trap")
+			+ "%s la coloca. %s abre el Trapulator, con el inventario completo.\n\n"
+			% [_key("place_trap"), _key("trapulator")]
+			+ _trap_table()
+		),
+	})
+	pages.append({
+		"title": "Contramedidas",
+		"body": (
+			"El anillo exterior de la rueda tiene una contramedida para cada trampa.\n\n"
+			+ "Si registras un mueble o cruzas una puerta con la contramedida adecuada en la mano, "
+			+ "desactivas la trampa sin sufrirla.\n\n"
+			+ "El [b]%s[/b] anula la bomba de tiempo de la sala en la que estés." % ItemDB.get_counter_name(ItemDB.CounterId.DEFUSER)
+		),
+	})
+	pages.append({
+		"title": "Armas",
+		"body": (
+			"Las armas aparecen por la mansión: recógelas con %s.\n\n" % _key("interact")
+			+ "Apunta con el %s o el %s y dispara con %s.\n\n" % [_hl("ratón"), _hl("stick R"), _key("fire_weapon")]
+			+ "Cañón orbital: dispara para cargarlo, lleva la mirilla a la vista del rival "
+			+ "y vuelve a disparar. Alcanza cualquier sala, pero tiene un solo disparo."
+		),
+	})
+	return pages
+
+
+func _item_names() -> PackedStringArray:
+	var names: PackedStringArray = PackedStringArray()
+	for item_id: int in ItemDB.get_all_items():
+		names.append(ItemDB.get_item_name(item_id).to_lower())
+	return names
+
+
+func _trap_table() -> String:
+	var site_names: Dictionary = {
+		ItemDB.TrapSite.FURNITURE: "en un mueble",
+		ItemDB.TrapSite.DOOR: "en una puerta",
+		ItemDB.TrapSite.ROOM: "en la sala (explota a los %d s)" % int(ItemDB.TIMED_BOMB_FUSE),
+	}
+	var lines: PackedStringArray = PackedStringArray()
+	for trap_id: int in ItemDB.get_all_traps():
+		lines.append("• [b]%s[/b] %s" % [ItemDB.get_trap_name(trap_id), String(site_names.get(ItemDB.get_trap_site(trap_id), ""))])
+	return "\n".join(lines)

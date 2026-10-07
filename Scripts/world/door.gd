@@ -8,6 +8,7 @@ signal open_state_changed(is_open: bool)
 
 const OUTLINE_W: float = 2.0
 const INTERACT_PADDING: float = 10.0
+const SPLASH_DURATION: float = 0.45
 
 var direction: String = "N"
 var owning_room: Room = null
@@ -92,25 +93,23 @@ func can_spy_open(spy_id: int) -> bool:
 	return GameState.has_all_items(spy_id)
 
 
-func try_toggle_for_spy(spy_id: int) -> bool:
+func try_toggle_for_spy(spy: SpyBase) -> bool:
 	if is_open:
 		set_open(false, true)
 		return true
-	if not can_spy_open(spy_id):
-		GameState.exit_reached.emit(spy_id)
+	if spy != null and not can_spy_open(spy.spy_id):
+		GameState.exit_reached.emit(spy.spy_id)
 		return false
-	set_open(true, true)
-	_trigger_bucket(spy_id)
-	return true
+	return try_open_for_spy(spy)
 
 
-func try_open_for_spy(spy_id: int, propagate: bool = true) -> bool:
+func try_open_for_spy(spy: SpyBase, propagate: bool = true) -> bool:
 	if is_open:
 		return true
-	if not can_spy_open(spy_id):
+	if spy == null or not can_spy_open(spy.spy_id):
 		return false
 	set_open(true, propagate)
-	_trigger_bucket(spy_id)
+	_trigger_bucket(spy)
 	return true
 
 
@@ -224,51 +223,24 @@ func _expand_polygon(poly: PackedVector2Array, padding: float) -> PackedVector2A
 	return out
 
 
-func _trigger_bucket(spy_id: int) -> void:
+## El cubo puede estar en esta cara de la puerta o en la de la sala vecina.
+func _trigger_bucket(spy: SpyBase) -> void:
 	var bearer: Door = self if has_bucket() else null
 	if bearer == null and partner != null and is_instance_valid(partner) and partner.has_bucket():
 		bearer = partner
 	if bearer == null:
 		return
-	var spy: SpyBase = _find_spy(spy_id)
 	bearer.trap_id = -1
 	bearer.trapper_id = -1
 	bearer.queue_redraw()
-	if spy == null:
-		return
-	var counter_id: int = ItemDB.get_counter_for_trap(ItemDB.TrapId.BUCKET)
-	if GameState.consume_counter(spy.spy_id, counter_id):
-		GameState.notify_human(spy.spy_id, "El paraguas para el cubo")
-		return
-	bearer._splash_left = 0.45
-	bearer._update_visibility()
-	bearer.queue_redraw()
-	spy.apply_trap_effect(ItemDB.TrapId.BUCKET, bearer.global_position)
-
-
-func _find_spy(spy_id: int) -> SpyBase:
-	var rooms: Array[Room] = []
-	if owning_room != null:
-		rooms.append(owning_room)
-	if partner != null and is_instance_valid(partner) and partner.owning_room != null:
-		rooms.append(partner.owning_room)
-	for room: Room in rooms:
-		for body: Node in room.spies_inside:
-			var spy: SpyBase = body as SpyBase
-			if spy != null and spy.spy_id == spy_id:
-				return spy
-	if not is_inside_tree():
-		return null
-	for node: Node in get_tree().get_nodes_in_group("spy"):
-		var spy: SpyBase = node as SpyBase
-		if spy != null and spy.spy_id == spy_id:
-			return spy
-	return null
+	if TrapRules.trigger(spy, ItemDB.TrapId.BUCKET, bearer.global_position):
+		bearer._splash_left = SPLASH_DURATION
+		bearer._update_visibility()
 
 
 func _draw() -> void:
 	if _splash_left > 0.0:
-		var amount: float = clampf(_splash_left / 0.45, 0.0, 1.0)
+		var amount: float = clampf(_splash_left / SPLASH_DURATION, 0.0, 1.0)
 		draw_circle(Vector2.ZERO, lerpf(12.0, 40.0, 1.0 - amount), Color(0.2, 0.75, 0.98, amount * 0.9))
 	if is_open or _local_poly.size() < 3:
 		return

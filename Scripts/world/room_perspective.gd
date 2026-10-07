@@ -282,6 +282,126 @@ const DOOR_SIDE_PANEL_RATIO: float = 0.44
 const DOOR_GAP_MARGIN_RATIO: float = 0.012
 
 
+static func breach_trigger_depth(_room_h: float) -> float:
+	return 24.0
+
+
+static func opening_half_along_edge(direction: String, room_w: float, room_h: float) -> float:
+	match direction:
+		"N":
+			return room_w * DOOR_N_WIDTH_RATIO * 0.5
+		"S":
+			var floor_pts: PackedVector2Array = floor_polygon(room_w, room_h)
+			var bar_top_y: float = south_wall_bar_top_y(room_w, room_h)
+			var top_l_x: float = _x_on_segment_at_y(floor_pts[0], floor_pts[3], bar_top_y)
+			var top_r_x: float = _x_on_segment_at_y(floor_pts[1], floor_pts[2], bar_top_y)
+			return absf(top_r_x - top_l_x) * DOOR_S_WIDTH_RATIO * 0.5
+		"W", "E":
+			return room_h * DOOR_SIDE_WIDTH_RATIO
+	return 36.0
+
+
+static func breach_trigger_polygon(direction: String, floor_t: float, room_w: float, room_h: float) -> PackedVector2Array:
+	var poly: PackedVector2Array = floor_polygon(room_w, room_h)
+	var idx: int = edge_index_for_direction(direction)
+	var seg_a: Vector2 = poly[idx]
+	var seg_b: Vector2 = poly[(idx + 1) % poly.size()]
+	var edge: Vector2 = seg_b - seg_a
+	var length: float = edge.length()
+	if length < 1.0:
+		return PackedVector2Array()
+	var along: Vector2 = edge / length
+	var center: Vector2 = seg_a + edge * clampf(floor_t, 0.0, 1.0)
+	var half: float = opening_half_along_edge(direction, room_w, room_h)
+	var inward: Vector2 = floor_centroid(room_w, room_h) - center
+	if inward.length_squared() < 1.0:
+		inward = Vector2.DOWN
+	inward = inward.normalized()
+	var depth: float = breach_trigger_depth(room_h)
+	var left: Vector2 = center - along * half
+	var right: Vector2 = center + along * half
+	return PackedVector2Array([
+		left,
+		right,
+		right + inward * depth,
+		left + inward * depth,
+	])
+
+
+static func breach_polygon(direction: String, floor_t: float, room_w: float, room_h: float) -> PackedVector2Array:
+	var t: float = clampf(floor_t, 0.0, 1.0)
+	match direction:
+		"N":
+			return _north_opening_polygon(t, room_w, room_h)
+		"S":
+			return _south_opening_polygon(t, room_w, room_h)
+		"W":
+			return _side_opening_polygon("W", 1.0 - t, room_w, room_h)
+		"E":
+			return _side_opening_polygon("E", t, room_w, room_h)
+	return PackedVector2Array()
+
+
+static func _north_opening_polygon(floor_t: float, room_w: float, room_h: float) -> PackedVector2Array:
+	var back: PackedVector2Array = back_wall_polygon(room_w, room_h)
+	var floor_pts: PackedVector2Array = floor_polygon(room_w, room_h)
+	var edge_pt: Vector2 = floor_pts[EDGE_N].lerp(floor_pts[(EDGE_N + 1) % floor_pts.size()], floor_t)
+	var half: float = room_w * DOOR_N_WIDTH_RATIO * 0.5
+	var bot: float = back[3].y
+	var top: float = lerpf(back[0].y, bot, 1.0 - DOOR_N_HEIGHT_RATIO)
+	var cx: float = clampf(edge_pt.x, back[3].x + half, back[2].x - half)
+	return PackedVector2Array([
+		Vector2(cx - half, top),
+		Vector2(cx + half, top),
+		Vector2(cx + half, bot),
+		Vector2(cx - half, bot),
+	])
+
+
+static func _south_opening_polygon(floor_t: float, room_w: float, room_h: float) -> PackedVector2Array:
+	var floor_pts: PackedVector2Array = floor_polygon(room_w, room_h)
+	var front_l: Vector2 = floor_pts[0]
+	var front_r: Vector2 = floor_pts[1]
+	var back_l: Vector2 = floor_pts[3]
+	var back_r: Vector2 = floor_pts[2]
+	var bar_top_y: float = south_wall_bar_top_y(room_w, room_h)
+	var top_l_x: float = _x_on_segment_at_y(front_l, back_l, bar_top_y)
+	var top_r_x: float = _x_on_segment_at_y(front_r, back_r, bar_top_y)
+	var span: float = top_r_x - top_l_x
+	var half: float = span * DOOR_S_WIDTH_RATIO * 0.5
+	var cx: float = clampf(lerpf(top_l_x, top_r_x, floor_t), top_l_x + half, top_r_x - half)
+	return PackedVector2Array([
+		Vector2(cx - half, bar_top_y),
+		Vector2(cx + half, bar_top_y),
+		Vector2(cx + half, front_r.y),
+		Vector2(cx - half, front_l.y),
+	])
+
+
+static func _side_opening_polygon(side: String, wall_t: float, room_w: float, room_h: float) -> PackedVector2Array:
+	var wall: PackedVector2Array = left_wall_polygon(room_w, room_h) if side == "W" else right_wall_polygon(room_w, room_h)
+	var along: Vector2 = (wall[1] - wall[0]).normalized()
+	var span: float = wall[0].distance_to(wall[1])
+	var depth_sample: Vector2 = wall[0].lerp(wall[1], clampf(wall_t, 0.0, 1.0))
+	var depth: float = depth_from_y(depth_sample.y, room_h)
+	var half_w: float = lerpf(
+		room_h * DOOR_SIDE_WIDTH_RATIO,
+		room_h * DOOR_SIDE_WIDTH_RATIO * 0.72,
+		1.0 - depth
+	)
+	var margin: float = half_w / maxf(span, 1.0)
+	var t: float = clampf(wall_t, margin, 1.0 - margin)
+	var bottom_mid: Vector2 = wall[0].lerp(wall[1], t)
+	var ceiling_mid: Vector2 = wall[3].lerp(wall[2], t)
+	var door_top: Vector2 = bottom_mid.lerp(ceiling_mid, DOOR_SIDE_PANEL_RATIO)
+	return PackedVector2Array([
+		bottom_mid - along * half_w,
+		bottom_mid + along * half_w,
+		door_top + along * half_w,
+		door_top - along * half_w,
+	])
+
+
 static func get_door_polygon(direction: String, room_w: float, room_h: float) -> PackedVector2Array:
 	match direction:
 		"N":

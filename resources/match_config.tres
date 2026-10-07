@@ -5,8 +5,10 @@
 [resource]
 script = ExtResource("1")
 match_duration = 300.0
+match_timer_enabled = true
 starting_traps_per_kind = 1
 traps_infinite = true
-starting_counters_per_kind = 0
+starting_counters_per_kind = 1
+counters_infinite = true
 respawn_base_duration = 2.0
 respawn_streak_increment = 2.0

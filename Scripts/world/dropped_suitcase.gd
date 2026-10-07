@@ -65,4 +65,4 @@ func _draw() -> void:
 
 
 func get_pickup_label() -> String:
-	return "Maletin"
+	return ItemDB.get_item_name(ItemDB.ItemId.SUITCASE)

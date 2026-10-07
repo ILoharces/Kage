@@ -44,6 +44,10 @@ custom_bind_ip=""
 port_override_enabled=false
 port_override=6550
 
+[gui]
+
+theme/custom="res://resources/ui/kage_theme.tres"
+
 [input]
 
 ui_cancel={

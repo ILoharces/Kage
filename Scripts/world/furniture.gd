@@ -1,13 +1,20 @@
 extends Node2D
 class_name Furniture
 
-# Mueble: vacio / con item / con trampa (oculta). Abierto = desplazado para inspeccionar o poner trampa.
+# Mueble: vacio / con item / con arma / con trampa (oculta). Abierto = desplazado para inspeccionar o poner trampa.
 
-@warning_ignore("unused_signal")
 signal item_taken(item_id: int, spy: SpyBase)
-@warning_ignore("unused_signal")
 signal trap_triggered(trap_id: int, spy: SpyBase)
 signal opened_changed(is_open: bool)
+
+
+## Lo que encuentra un espía al registrar el mueble. La trampa la resuelve TrapRules.
+class SearchResult:
+	extends RefCounted
+	var item_id: int = -1
+	var weapon_id: StringName = &""
+	var trap_id: int = -1
+	var trapper_id: int = -1
 
 const INTERACT_PADDING: float = 20.0
 const INSPECT_LIFT_PX: float = 20.0
@@ -23,7 +30,6 @@ var hidden_weapon_id: StringName = &""
 var trap_id: int = -1
 var trapper_id: int = -1
 var owning_room: Room = null
-var timed_bomb_timer: Timer = null
 var is_open: bool = false
 var _inspect_visual_offset: Vector2 = Vector2.ZERO
 var _body_shape: RectangleShape2D = null
@@ -163,7 +169,7 @@ func hide_weapon(weapon_id: StringName) -> void:
 
 
 func set_trap(new_trap_id: int, owner_spy_id: int) -> bool:
-	if new_trap_id == ItemDB.TrapId.TIMED or new_trap_id == ItemDB.TrapId.BUCKET:
+	if not ItemDB.is_furniture_trap(new_trap_id):
 		return false
 	if not is_open or state != State.EMPTY:
 		return false
@@ -181,47 +187,33 @@ func flash_placed() -> void:
 	tw.tween_property(self, "modulate", Color.WHITE, 0.45)
 
 
-func interact(spy: SpyBase) -> Dictionary:
-	var result: Dictionary = {
-		"item_found": -1,
-		"weapon_found": &"",
-		"trap_triggered": -1,
-		"trap_disarmed": false,
-		"should_close": false,
-	}
+## Vacía el mueble y devuelve lo que había dentro.
+func interact(spy: SpyBase) -> SearchResult:
+	var result: SearchResult = SearchResult.new()
 	match state:
-		State.EMPTY:
-			pass
 		State.HAS_ITEM:
-			var found: int = hidden_item
-			hidden_item = -1
-			state = State.EMPTY
-			result["item_found"] = found
-			item_taken.emit(found, spy)
+			result.item_id = hidden_item
+			item_taken.emit(hidden_item, spy)
 		State.HAS_WEAPON:
-			var found_weapon: StringName = hidden_weapon_id
-			hidden_weapon_id = &""
-			state = State.EMPTY
-			result["weapon_found"] = found_weapon
+			result.weapon_id = hidden_weapon_id
 		State.HAS_TRAP:
-			var counter_id: int = ItemDB.get_counter_for_trap(trap_id)
-			if GameState.consume_counter(spy.spy_id, counter_id):
-				result["trap_disarmed"] = true
-			else:
-				result["trap_triggered"] = trap_id
-				trap_triggered.emit(trap_id, spy)
-			trap_id = -1
-			trapper_id = -1
-			state = State.EMPTY
-			_cancel_timed_bomb()
-			result["should_close"] = true
+			result.trap_id = trap_id
+			result.trapper_id = trapper_id
+			trap_triggered.emit(trap_id, spy)
+	_clear_contents()
 	return result
 
 
-func _cancel_timed_bomb() -> void:
-	if timed_bomb_timer != null and is_instance_valid(timed_bomb_timer):
-		timed_bomb_timer.queue_free()
-		timed_bomb_timer = null
+func _clear_contents() -> void:
+	state = State.EMPTY
+	hidden_item = -1
+	hidden_weapon_id = &""
+	trap_id = -1
+	trapper_id = -1
+
+
+func has_trap() -> bool:
+	return state == State.HAS_TRAP
 
 
 func has_item() -> bool:
@@ -234,3 +226,51 @@ func has_weapon() -> bool:
 
 func is_empty() -> bool:
 	return state == State.EMPTY
+
+
+func world_hit_rect() -> Rect2:
+	var size: Vector2 = _body_shape.size if _body_shape != null else Vector2(40.0, 24.0)
+	return Rect2(global_position - size * 0.5, size)
+
+
+func destroy_from_rocket() -> void:
+	_drop_rocket_contents()
+	_release_inspecting_spies()
+	if owning_room != null:
+		owning_room.furniture_list.erase(self)
+		var mansion: Mansion = owning_room.get_parent() as Mansion
+		if mansion != null:
+			mansion.all_furniture.erase(self)
+	queue_free()
+
+
+func _drop_rocket_contents() -> void:
+	if owning_room == null:
+		return
+	match state:
+		State.HAS_ITEM:
+			if hidden_item >= 0:
+				GameState.spawn_dropped_item(owning_room, global_position, hidden_item)
+		State.HAS_WEAPON:
+			if hidden_weapon_id.is_empty():
+				return
+			var ammo: int = -1
+			var weapon: WeaponData = WeaponDB.get_weapon(hidden_weapon_id)
+			if weapon != null:
+				ammo = weapon.pickup_ammo
+			GameState.spawn_dropped_weapon(owning_room, global_position, hidden_weapon_id, ammo)
+		State.HAS_TRAP:
+			pass
+
+
+func _release_inspecting_spies() -> void:
+	if owning_room == null:
+		return
+	for node: Node in owning_room.spies_inside:
+		var spy: SpyBase = node as SpyBase
+		if spy == null:
+			continue
+		if spy.open_furniture == self:
+			spy.open_furniture = null
+		if spy.nearby_furniture == self:
+			spy.nearby_furniture = null

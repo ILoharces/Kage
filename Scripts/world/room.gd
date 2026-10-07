@@ -26,6 +26,8 @@ var doors_container: Node2D
 var south_wall_bar: SouthWallBar = null
 var _passage_cooldowns: Dictionary = {}  # spy_id -> expire_time_ms
 var _passage_links: Dictionary = {}
+var breaches: Array[Dictionary] = []
+var _breach_serial: int = 0
 
 enum TimedTrapState { NONE, ARMED, COUNTING }
 
@@ -34,6 +36,7 @@ const TICK_GAP: float = 0.42
 static var _shared_tick: AudioStreamWAV = null
 
 var _timed_state: TimedTrapState = TimedTrapState.NONE
+var _timed_trapper_id: int = -1
 var _timed_fuse_left: float = 0.0
 var _tick_player: AudioStreamPlayer = null
 var _tick_wait: float = 0.0
@@ -74,6 +77,8 @@ func rebuild_geometry() -> void:
 	var rh: float = get_room_h()
 	var walls: StaticBody2D = get_node_or_null("Walls") as StaticBody2D
 	if walls != null:
+		walls.collision_layer = 0
+		walls.name = "WallsOld"
 		walls.queue_free()
 	_build_wall_collision()
 	for child: Node in get_children():
@@ -92,11 +97,14 @@ func rebuild_geometry() -> void:
 		door.refresh_from_room()
 	if south_wall_bar != null:
 		south_wall_bar.setup(self)
+	_refresh_breach_shapes()
 	queue_redraw()
 
 
 func _process(delta: float) -> void:
 	if _timed_state != TimedTrapState.COUNTING:
+		return
+	if _try_defuse_by_anyone_inside():
 		return
 	_timed_fuse_left -= delta
 	_play_tick_if_due(delta)
@@ -138,6 +146,7 @@ func _draw() -> void:
 	draw_polyline(floor_poly + PackedVector2Array([floor_poly[0]]), outline, OUTLINE_W, true)
 
 	_draw_doors_on_walls(rw, rh, outline)
+	_draw_breaches(rw, rh, outline)
 
 
 func _has_exit_door() -> bool:
@@ -155,6 +164,20 @@ func _draw_doors_on_walls(room_w: float, room_h: float, outline: Color) -> void:
 		_draw_door_gap_polygon("W", room_w, room_h, gap_col, outline)
 	if has_door_e:
 		_draw_door_gap_polygon("E", room_w, room_h, gap_col, outline)
+
+
+func _draw_breaches(room_w: float, room_h: float, outline: Color) -> void:
+	for breach: Dictionary in breaches:
+		var dir_str: String = String(breach.get("dir", ""))
+		if dir_str == "S":
+			continue
+		var pts: PackedVector2Array = RoomPerspective.breach_polygon(
+			dir_str, float(breach.get("t", 0.5)), room_w, room_h
+		)
+		if pts.size() < 3:
+			continue
+		draw_colored_polygon(pts, ItemDB.COLOR_DOOR_GAP)
+		draw_polyline(pts + PackedVector2Array([pts[0]]), outline, OUTLINE_W, true)
 
 
 func _draw_door_gap_polygon(direction: String, room_w: float, room_h: float, gap_col: Color, outline: Color) -> void:
@@ -244,7 +267,7 @@ func poll_spy_passages(spy: SpyBase) -> void:
 			continue
 		var passage_door: Door = get_door_for_direction(exit_dir)
 		if passage_door != null and passage_door.is_closed() and area.overlaps_body(spy):
-			passage_door.try_open_for_spy(spy.spy_id, true)
+			passage_door.try_open_for_spy(spy)
 		if spy.is_passage_bounce_blocked(self, exit_dir):
 			continue
 		if not area.monitoring or not area.overlaps_body(spy):
@@ -257,6 +280,207 @@ func poll_spy_passages(spy: SpyBase) -> void:
 				spy, link["target"] as Room, exit_dir, String(link["entry"])
 			)
 		return
+	for breach: Dictionary in breaches:
+		var area_name: String = String(breach.get("name", ""))
+		var area: Area2D = get_node_or_null(area_name) as Area2D
+		if area == null or not area.monitoring or not area.overlaps_body(spy):
+			continue
+		_try_breach_for_spy(spy, breach)
+		return
+
+
+func open_rocket_breach(direction: String, floor_t: float) -> bool:
+	var mansion: Mansion = get_parent() as Mansion
+	if mansion == null or direction.is_empty():
+		return false
+	var neighbor: Room = mansion.get_room_at(grid_pos + GridDirection.delta(direction))
+	if neighbor == null:
+		return false
+	var clamped: float = _clamp_breach_t(direction, floor_t)
+	var entry_dir: String = GridDirection.opposite(direction)
+	var entry_t: float = 1.0 - clamped
+	if _breach_blocked(direction, clamped) or neighbor._breach_blocked(entry_dir, entry_t):
+		return false
+	_add_breach(direction, clamped, neighbor, entry_dir, entry_t)
+	neighbor._add_breach(entry_dir, entry_t, self, direction, clamped)
+	return true
+
+
+func breach_entry_local(direction: String, floor_t: float) -> Vector2:
+	var rw: float = get_room_w()
+	var rh: float = get_room_h()
+	var edge: PackedVector2Array = _floor_edge(direction)
+	var center: Vector2 = edge[0].lerp(edge[1], clampf(floor_t, 0.0, 1.0))
+	var inward: Vector2 = RoomPerspective.floor_centroid(rw, rh) - center
+	if inward.length_squared() < 1.0:
+		inward = Vector2.DOWN
+	inward = inward.normalized()
+	var hole: PackedVector2Array = RoomPerspective.breach_trigger_polygon(direction, floor_t, rw, rh)
+	var dist: float = RoomPerspective.breach_trigger_depth(rh) + rh * 0.07
+	var pos: Vector2 = RoomPerspective.clamp_to_floor(center + inward * dist, rw, rh)
+	var guard: int = 0
+	while hole.size() >= 3 and Geometry2D.is_point_in_polygon(pos, hole) and guard < 6:
+		dist += rh * 0.04
+		pos = RoomPerspective.clamp_to_floor(center + inward * dist, rw, rh)
+		guard += 1
+	return pos
+
+
+func spy_overlaps_exit(spy: SpyBase, direction: String) -> bool:
+	var passage: Area2D = get_node_or_null("Passage_%s" % direction) as Area2D
+	if passage != null and passage.monitoring and passage.overlaps_body(spy):
+		return true
+	for breach: Dictionary in breaches:
+		if String(breach.get("dir", "")) != direction:
+			continue
+		var area: Area2D = get_node_or_null(String(breach.get("name", ""))) as Area2D
+		if area != null and area.monitoring and area.overlaps_body(spy):
+			return true
+	return false
+
+
+func _add_breach(
+	direction: String,
+	floor_t: float,
+	target: Room,
+	entry_dir: String,
+	entry_t: float
+) -> void:
+	_breach_serial += 1
+	var area_name: String = "Breach_%d" % _breach_serial
+	breaches.append({
+		"dir": direction,
+		"t": floor_t,
+		"name": area_name,
+		"target": target,
+		"entry": entry_dir,
+		"entry_t": entry_t,
+	})
+	var area: Area2D = Area2D.new()
+	area.name = area_name
+	area.collision_layer = 0
+	area.collision_mask = 2
+	area.monitoring = true
+	area.monitorable = false
+	var shape: ConvexPolygonShape2D = ConvexPolygonShape2D.new()
+	shape.points = RoomPerspective.breach_trigger_polygon(direction, floor_t, get_room_w(), get_room_h())
+	var col: CollisionShape2D = CollisionShape2D.new()
+	col.shape = shape
+	area.add_child(col)
+	add_child(area)
+	area.body_entered.connect(_on_breach_entered.bind(area_name))
+	area.body_exited.connect(_on_passage_body_exited.bind(direction))
+	rebuild_geometry()
+
+
+func _on_breach_entered(body: Node, area_name: String) -> void:
+	var spy: SpyBase = body as SpyBase
+	if spy == null:
+		return
+	var breach: Dictionary = _breach_by_name(area_name)
+	if breach.is_empty():
+		return
+	_try_breach_for_spy(spy, breach)
+
+
+func _try_breach_for_spy(spy: SpyBase, breach: Dictionary) -> void:
+	if spy.current_room != self:
+		return
+	var exit_dir: String = String(breach.get("dir", ""))
+	var now_ms: int = Time.get_ticks_msec()
+	var key: int = spy.get_instance_id()
+	if int(_passage_cooldowns.get(key, 0)) > now_ms or spy.is_passage_bounce_blocked(self, exit_dir):
+		return
+	var target: Room = breach.get("target") as Room
+	if target == null:
+		return
+	_passage_cooldowns[key] = now_ms + PASSAGE_COOLDOWN_MS
+	var entry_dir: String = String(breach.get("entry", ""))
+	var spawn: Vector2 = target.breach_entry_local(entry_dir, float(breach.get("entry_t", 0.5)))
+	spy.teleport_to_room(target, entry_dir, self, spawn)
+
+
+func _breach_by_name(area_name: String) -> Dictionary:
+	for breach: Dictionary in breaches:
+		if String(breach.get("name", "")) == area_name:
+			return breach
+	return {}
+
+
+func _clamp_breach_t(direction: String, floor_t: float) -> float:
+	var length: float = _floor_edge_length(direction)
+	var half: float = RoomPerspective.opening_half_along_edge(direction, get_room_w(), get_room_h())
+	if length < 1.0:
+		return 0.5
+	var margin: float = clampf((half + 4.0) / length, 0.0, 0.45)
+	return clampf(floor_t, margin, 1.0 - margin)
+
+
+func _breach_blocked(direction: String, floor_t: float) -> bool:
+	var length: float = _floor_edge_length(direction)
+	var half: float = RoomPerspective.opening_half_along_edge(direction, get_room_w(), get_room_h())
+	if _has_door_direction(direction):
+		var door_t: float = _door_edge_t(direction)
+		if absf(floor_t - door_t) * length < half * 2.0:
+			return true
+	for breach: Dictionary in breaches:
+		if String(breach.get("dir", "")) != direction:
+			continue
+		if absf(float(breach.get("t", 0.5)) - floor_t) * length < half * 2.0:
+			return true
+	return false
+
+
+func _has_door_direction(direction: String) -> bool:
+	match direction:
+		"N":
+			return has_door_n
+		"E":
+			return has_door_e
+		"S":
+			return has_door_s
+		"W":
+			return has_door_w
+	return false
+
+
+func _door_edge_t(direction: String) -> float:
+	var edge: PackedVector2Array = _floor_edge(direction)
+	var center: Vector2 = RoomPerspective.get_door_visual_center(direction, get_room_w(), get_room_h())
+	var projected: Vector2 = RoomPerspective.project_point_on_segment(center, edge[0], edge[1])
+	var span: Vector2 = edge[1] - edge[0]
+	var len_sq: float = span.length_squared()
+	if len_sq < 0.001:
+		return 0.5
+	return clampf((projected - edge[0]).dot(span) / len_sq, 0.0, 1.0)
+
+
+func _floor_edge(direction: String) -> PackedVector2Array:
+	var poly: PackedVector2Array = RoomPerspective.floor_polygon(get_room_w(), get_room_h())
+	var idx: int = RoomPerspective.edge_index_for_direction(direction)
+	return PackedVector2Array([poly[idx], poly[(idx + 1) % poly.size()]])
+
+
+func _floor_edge_length(direction: String) -> float:
+	var edge: PackedVector2Array = _floor_edge(direction)
+	return edge[0].distance_to(edge[1])
+
+
+func _refresh_breach_shapes() -> void:
+	var rw: float = get_room_w()
+	var rh: float = get_room_h()
+	for breach: Dictionary in breaches:
+		var area: Area2D = get_node_or_null(String(breach.get("name", ""))) as Area2D
+		if area == null:
+			continue
+		var poly: PackedVector2Array = RoomPerspective.breach_trigger_polygon(
+			String(breach.get("dir", "")), float(breach.get("t", 0.5)), rw, rh
+		)
+		for shape_node: Node in area.get_children():
+			var col: CollisionShape2D = shape_node as CollisionShape2D
+			if col == null or not col.shape is ConvexPolygonShape2D:
+				continue
+			(col.shape as ConvexPolygonShape2D).points = poly
 
 
 func _on_passage_entered(body: Node, target_room: Room, exit_dir: String, entry_dir: String) -> void:
@@ -269,25 +493,8 @@ func _on_passage_entered(body: Node, target_room: Room, exit_dir: String, entry_
 func _try_passage_for_spy(
 	spy: SpyBase, target_room: Room, exit_dir: String, entry_dir: String
 ) -> void:
-	# Solo si el espia sale desde ESTA habitacion (no al reaparecer en la de destino).
-	if spy.current_room != self:
-		return
-	var now_ms: int = Time.get_ticks_msec()
-	var key: int = spy.get_instance_id()
-	if int(_passage_cooldowns.get(key, 0)) > now_ms or spy.is_passage_bounce_blocked(self, exit_dir):
-		return
-	_passage_cooldowns[key] = now_ms + PASSAGE_COOLDOWN_MS
-	var passage_door: Door = get_door_for_direction(exit_dir)
-	if passage_door != null:
-		if passage_door.is_exit_door:
-			if not GameState.has_all_items(spy.spy_id):
-				GameState.exit_reached.emit(spy.spy_id)
-				return
-			GameState.notify_exit_reached(spy.spy_id)
-			if not GameState.running:
-				return
-		passage_door.try_open_for_spy(spy.spy_id, true)
-	spy.teleport_to_room(target_room, entry_dir, self)
+	if _cross_passage_door(spy, exit_dir):
+		spy.teleport_to_room(target_room, entry_dir, self)
 
 
 func _on_exit_passage_entered(body: Node, exit_dir: String) -> void:
@@ -298,23 +505,30 @@ func _on_exit_passage_entered(body: Node, exit_dir: String) -> void:
 
 
 func _try_exit_passage_for_spy(spy: SpyBase, exit_dir: String) -> void:
+	_cross_passage_door(spy, exit_dir)
+
+
+## Gestiona cooldown, puerta de salida y apertura. Devuelve true si el espía puede seguir.
+func _cross_passage_door(spy: SpyBase, exit_dir: String) -> bool:
+	# Solo si el espia sale desde ESTA habitacion (no al reaparecer en la de destino).
 	if spy.current_room != self:
-		return
+		return false
 	var now_ms: int = Time.get_ticks_msec()
 	var key: int = spy.get_instance_id()
 	if int(_passage_cooldowns.get(key, 0)) > now_ms or spy.is_passage_bounce_blocked(self, exit_dir):
-		return
+		return false
 	_passage_cooldowns[key] = now_ms + PASSAGE_COOLDOWN_MS
 	var passage_door: Door = get_door_for_direction(exit_dir)
-	if passage_door != null:
-		if passage_door.is_exit_door:
-			if not GameState.has_all_items(spy.spy_id):
-				GameState.exit_reached.emit(spy.spy_id)
-				return
-			GameState.notify_exit_reached(spy.spy_id)
-			if not GameState.running:
-				return
-		passage_door.try_open_for_spy(spy.spy_id, true)
+	if passage_door == null:
+		return true
+	if passage_door.is_exit_door:
+		GameState.notify_exit_reached(spy.spy_id)
+		if not GameState.running:
+			return false
+		if not GameState.has_all_items(spy.spy_id):
+			return false
+	passage_door.try_open_for_spy(spy)
+	return true
 
 
 func _build_wall_collision() -> void:
@@ -396,12 +610,41 @@ func has_timed_trap() -> bool:
 	return _timed_state != TimedTrapState.NONE
 
 
-func arm_timed_trap() -> bool:
+func is_timed_trap_counting() -> bool:
+	return _timed_state == TimedTrapState.COUNTING
+
+
+func arm_timed_trap(owner_spy_id: int) -> bool:
 	if has_timed_trap():
 		return false
 	_timed_state = TimedTrapState.ARMED
+	_timed_trapper_id = owner_spy_id
 	_timed_fuse_left = 0.0
 	return true
+
+
+## Con el desactivador en la mano se corta la mecha (armada o ya en cuenta atrás).
+func try_defuse_timed_trap(spy: SpyBase) -> bool:
+	if not has_timed_trap() or not TrapRules.try_disarm(spy, ItemDB.TrapId.TIMED):
+		return false
+	_clear_timed_trap()
+	return true
+
+
+func _try_defuse_by_anyone_inside() -> bool:
+	for body: Node in spies_inside:
+		var spy: SpyBase = body as SpyBase
+		if TrapRules.holds_counter_for(spy, ItemDB.TrapId.TIMED):
+			return try_defuse_timed_trap(spy)
+	return false
+
+
+func _clear_timed_trap() -> void:
+	_timed_state = TimedTrapState.NONE
+	_timed_trapper_id = -1
+	_timed_fuse_left = 0.0
+	_stop_fuse_audio()
+	queue_redraw()
 
 
 func find_spring_exit() -> Dictionary:
@@ -434,6 +677,8 @@ func _on_timed_spy_entered(spy: Node) -> void:
 	var body: SpyBase = spy as SpyBase
 	if body == null or not body.is_alive:
 		return
+	if try_defuse_timed_trap(body):
+		return
 	_timed_state = TimedTrapState.COUNTING
 	_timed_fuse_left = ItemDB.TIMED_BOMB_FUSE
 	_tick_wait = 0.0
@@ -442,19 +687,15 @@ func _on_timed_spy_entered(spy: Node) -> void:
 
 
 func _explode_timed_trap() -> void:
-	_timed_state = TimedTrapState.NONE
-	_timed_fuse_left = 0.0
-	_stop_fuse_audio()
+	_clear_timed_trap()
 	Sfx.play_bomb_exploded()
 	var victims: Array[SpyBase] = []
 	for body: Node in spies_inside:
 		var spy: SpyBase = body as SpyBase
-		if spy != null and spy.is_alive and spy.combat != null:
+		if spy != null and spy.is_alive:
 			victims.append(spy)
 	for spy: SpyBase in victims:
-		if spy.is_alive:
-			spy.combat.kill_from_trap(ItemDB.TrapId.TIMED)
-	queue_redraw()
+		spy.apply_trap_effect(ItemDB.TrapId.TIMED)
 
 
 func _fuse_tint() -> Color:

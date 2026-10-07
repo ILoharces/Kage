@@ -63,6 +63,15 @@ static func save_map(display_name: String, editor_data: Dictionary) -> String:
 	return map_id
 
 
+static func delete_map(map_id: String) -> bool:
+	if map_id.is_empty():
+		return false
+	var path: String = MAPS_DIR + map_id + ".json"
+	if not FileAccess.file_exists(path):
+		return false
+	return DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) == OK
+
+
 static func load_map_data(map_id: String) -> Dictionary:
 	if map_id.is_empty():
 		return {}

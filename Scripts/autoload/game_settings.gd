@@ -10,6 +10,7 @@ const SETTINGS_PATH: String = "user://game_settings.cfg"
 const TRAP_WHEEL_SCALE_MIN: float = 0.6
 const TRAP_WHEEL_SCALE_MAX: float = 1.8
 const TRAP_WHEEL_SCALE_DEFAULT: float = 1.0
+const MASTER_VOLUME_DEFAULT: float = 0.8
 
 const _DEFINITIONS: Array[Dictionary] = [
 	{
@@ -18,16 +19,45 @@ const _DEFINITIONS: Array[Dictionary] = [
 		"options": [
 			{
 				"id": "use_ai_default",
-				"label": "Jugar contra IA por defecto",
+				"label": "Jugar contra la IA por defecto",
 				"type": "bool",
-				"hint": "Si esta desactivado, la partida usa dos jugadores locales.",
+				"default": true,
+				"hint": "Se recuerda la última elección al elegir mapa.",
+			},
+		],
+	},
+	{
+		"section_id": "audio",
+		"title": "Sonido",
+		"options": [
+			{
+				"id": "master_volume",
+				"label": "Volumen general",
+				"type": "float",
+				"min": 0.0,
+				"max": 1.0,
+				"step": 0.05,
+				"default": MASTER_VOLUME_DEFAULT,
 			},
 		],
 	},
 	{
 		"section_id": "interface",
-		"title": "Interfaz",
+		"title": "Pantalla e interfaz",
 		"options": [
+			{
+				"id": "fullscreen",
+				"label": "Pantalla completa",
+				"type": "bool",
+				"default": true,
+			},
+			{
+				"id": "show_controls_guide",
+				"label": "Mostrar la guía de controles en partida",
+				"type": "bool",
+				"default": true,
+				"hint": "Columna central con los botones de cada jugador.",
+			},
 			{
 				"id": "trap_wheel_scale",
 				"label": "Tamaño de la rueda de trampas",
@@ -36,13 +66,15 @@ const _DEFINITIONS: Array[Dictionary] = [
 				"max": TRAP_WHEEL_SCALE_MAX,
 				"step": 0.05,
 				"default": TRAP_WHEEL_SCALE_DEFAULT,
-				"hint": "Escala de la rueda al mantener la tecla de selección.",
 			},
 		],
 	},
 ]
 
 var use_ai_default: bool = true
+var master_volume: float = MASTER_VOLUME_DEFAULT
+var fullscreen: bool = true
+var show_controls_guide: bool = true
 var trap_wheel_scale: float = TRAP_WHEEL_SCALE_DEFAULT
 var p1_control_mode: int = 0
 var p2_control_mode: int = 2
@@ -178,28 +210,65 @@ func apply_to_match_defaults() -> void:
 	GameState.use_ai = use_ai_default
 
 
+## Cada opción de _DEFINITIONS tiene una propiedad homónima en este autoload.
 func _sync_properties_to_values() -> void:
-	_values["use_ai_default"] = use_ai_default
-	_values["trap_wheel_scale"] = trap_wheel_scale
+	for entry: Dictionary in _all_options():
+		var option_id: String = String(entry.get("id", ""))
+		_values[option_id] = get(option_id)
 
 
 func _sync_values_to_properties() -> void:
-	use_ai_default = bool(_values.get("use_ai_default", true))
-	trap_wheel_scale = _clamp_trap_wheel_scale(float(_values.get("trap_wheel_scale", TRAP_WHEEL_SCALE_DEFAULT)))
+	for entry: Dictionary in _all_options():
+		var option_id: String = String(entry.get("id", ""))
+		_apply_value_to_property(option_id, _values.get(option_id, _default_for_option(entry)))
 
 
 func _apply_value_to_property(option_id: String, value: Variant) -> void:
+	var entry: Dictionary = _find_option(option_id)
+	match String(entry.get("type", "")):
+		"bool":
+			set(option_id, bool(value))
+		"float":
+			set(option_id, clampf(float(value), float(entry.get("min", 0.0)), float(entry.get("max", 1.0))))
 	match option_id:
-		"use_ai_default":
-			use_ai_default = bool(value)
-		"trap_wheel_scale":
-			trap_wheel_scale = _clamp_trap_wheel_scale(float(value))
-		_:
-			pass
+		"master_volume":
+			_apply_audio()
+		"fullscreen":
+			_apply_window_mode()
 
 
-func _clamp_trap_wheel_scale(value: float) -> float:
-	return clampf(value, TRAP_WHEEL_SCALE_MIN, TRAP_WHEEL_SCALE_MAX)
+func _all_options() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for section: Dictionary in _DEFINITIONS:
+		for option: Variant in section.get("options", []) as Array:
+			out.append(option as Dictionary)
+	return out
+
+
+func _find_option(option_id: String) -> Dictionary:
+	for entry: Dictionary in _all_options():
+		if String(entry.get("id", "")) == option_id:
+			return entry
+	return {}
+
+
+func _apply_audio() -> void:
+	var bus: int = AudioServer.get_bus_index(&"Master")
+	AudioServer.set_bus_mute(bus, master_volume <= 0.001)
+	AudioServer.set_bus_volume_db(bus, linear_to_db(maxf(master_volume, 0.001)))
+
+
+func _apply_window_mode() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var mode: DisplayServer.WindowMode = DisplayServer.window_get_mode()
+	var is_fullscreen: bool = (
+		mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	)
+	if fullscreen and not is_fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN)
+	elif not fullscreen and is_fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
 
 
 func _default_for_option(entry: Dictionary) -> Variant:

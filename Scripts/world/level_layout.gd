@@ -67,6 +67,10 @@ func has_room(gp: Vector2i) -> bool:
 	return room_cells.has(gp)
 
 
+func get_door_specs() -> Array[Dictionary]:
+	return _duplicate_door_specs(_door_specs)
+
+
 func get_exit_door_spec() -> Dictionary:
 	if exit_door_cell.x < 0 or exit_door_dir.is_empty():
 		return {}

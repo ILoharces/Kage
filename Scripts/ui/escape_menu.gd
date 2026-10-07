@@ -1,55 +1,78 @@
-extends CanvasLayer
+extends MenuScreen
 class_name EscapeMenu
 
-# Menu modal de pausa (Escape): reanudar o volver al menu principal.
+# Pausa: reanudar, reiniciar el mapa, ajustes o volver al menú principal.
 
 signal resume_pressed
+signal restart_pressed
+signal settings_pressed
 signal exit_pressed
 
-const OVERLAY_COLOR: Color = Color(0.0, 0.0, 0.0, 0.55)
+const BUTTON_WIDTH: float = 300.0
 
-@onready var _overlay: ColorRect = %Overlay
-@onready var _resume_button: Button = %ResumeButton
-@onready var _exit_button: Button = %ExitButton
+var _subtitle: Label = null
+var _resume_button: Button = null
+var _buttons: Array[Control] = []
 
 
 func _ready() -> void:
 	layer = 28
-	process_mode = Node.PROCESS_MODE_ALWAYS
-	visible = false
-	_overlay.color = OVERLAY_COLOR
-	var center: Control = %Center as Control
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var panel: PanelContainer = $Center/Panel as PanelContainer
-	if panel != null:
-		panel.add_theme_stylebox_override("panel", NesUiTheme.padded_panel_style(22.0))
-	var title: Label = $Center/Panel/VBox/Title as Label
-	if title != null:
-		title.text = "PAUSA"
-		NesUiTheme.style_spy_label(title)
-		title.add_theme_font_size_override("font_size", 26)
-	NesUiTheme.style_action_button(_resume_button)
-	NesUiTheme.style_action_button(_exit_button)
-	_resume_button.pressed.connect(func() -> void: resume_pressed.emit())
-	_exit_button.pressed.connect(func() -> void: exit_pressed.emit())
+	super._ready()
 
 
-func show_menu() -> void:
-	visible = true
-	_resume_button.grab_focus()
+func _build() -> void:
+	UiKit.dim_backdrop(root, 0.6)
+	var content: VBoxContainer = UiKit.centered_panel(root, Vector2(380, 0), 12)
+	content.add_child(UiKit.label("PAUSA", &"HeaderLabel", HORIZONTAL_ALIGNMENT_CENTER))
+	_subtitle = UiKit.wrapped_label("", &"HintLabel", HORIZONTAL_ALIGNMENT_CENTER)
+	content.add_child(_subtitle)
+	content.add_child(UiKit.spacer(6.0))
+	_resume_button = _add_button(content, "Reanudar", &"PrimaryButton", func() -> void: resume_pressed.emit())
+	_add_button(content, "Reiniciar partida", &"", _confirm_restart)
+	_add_button(content, "Ajustes", &"", func() -> void: settings_pressed.emit())
+	_add_button(content, "Salir al menú", &"DangerButton", _confirm_exit)
+	UiKit.chain_focus(_buttons)
 
 
-func hide_menu() -> void:
-	visible = false
+func _add_button(parent: Container, text: String, variation: StringName, callback: Callable) -> Button:
+	var btn: Button = UiKit.button(text, variation, BUTTON_WIDTH)
+	btn.custom_minimum_size.y = 48.0
+	btn.pressed.connect(callback)
+	parent.add_child(btn)
+	_buttons.append(btn)
+	return btn
+
+
+func set_map_name(map_name: String) -> void:
+	var where: String = "Mapa: %s   ·   " % map_name if not map_name.is_empty() else ""
+	_subtitle.text = "%sEl reloj está detenido" % where
 
 
 func is_visible_menu() -> bool:
 	return visible
 
 
+func _initial_focus() -> Control:
+	return _resume_button
+
+
+func _on_cancel() -> void:
+	resume_pressed.emit()
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
-		return
-	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause_menu") or event.is_action_pressed("p2_pause_menu"):
+	if visible and (event.is_action_pressed("pause_menu") or event.is_action_pressed("p2_pause_menu")):
 		resume_pressed.emit()
 		get_viewport().set_input_as_handled()
+		return
+	super._unhandled_input(event)
+
+
+func _confirm_restart() -> void:
+	UiKit.confirm(root, "Reiniciar partida", "Se pierde el progreso de esta partida.", "Reiniciar",
+		func() -> void: restart_pressed.emit())
+
+
+func _confirm_exit() -> void:
+	UiKit.confirm(root, "Salir al menú", "La partida en curso se abandona.", "Salir",
+		func() -> void: exit_pressed.emit())

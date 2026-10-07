@@ -15,6 +15,7 @@ var hands_mark: ColorRect = null
 var hands_label: Label = null
 var room_label: Label = null
 var loot_label: Label = null
+var prompt_label: Label = null
 var name_label: Label = null
 var role_label: Label = null
 var pip: ColorRect = null
@@ -55,6 +56,7 @@ func _build_content() -> void:
 	col.add_child(_make_time_row())
 	col.add_child(_make_health_row())
 	col.add_child(_make_hands_row())
+	col.add_child(_make_prompt_row())
 
 	var spacer: Control = Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -168,6 +170,24 @@ func _make_hands_row() -> HBoxContainer:
 	hands_label.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT_DIM)
 	row.add_child(hands_label)
 	return row
+
+
+func _make_prompt_row() -> Label:
+	prompt_label = Label.new()
+	prompt_label.text = ""
+	prompt_label.clip_text = true
+	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	NesUiTheme.style_caption(prompt_label)
+	prompt_label.add_theme_color_override("font_color", NesUiTheme.COLOR_TIMER_WARN)
+	prompt_label.visible = false
+	return prompt_label
+
+
+func set_prompt(text: String) -> void:
+	if prompt_label == null:
+		return
+	prompt_label.text = text
+	prompt_label.visible = not text.is_empty()
 
 
 func _make_inventory_box() -> PanelContainer:

@@ -25,7 +25,6 @@ func _ready() -> void:
 	GameState.weapons_changed.connect(_on_weapons_changed)
 	GameState.game_over.connect(_on_game_over)
 	GameState.exit_reached.connect(_on_exit_reached)
-	GameState.item_blocked_no_suitcase.connect(_on_item_blocked)
 	GameState.suitcase_dropped.connect(_on_suitcase_state_changed)
 	GameState.suitcase_recovered.connect(_on_suitcase_recovered)
 	GameState.suitcase_stolen.connect(_on_suitcase_stolen)
@@ -34,7 +33,15 @@ func _ready() -> void:
 	_on_time_changed(ItemDB.SpyId.PLAYER2, GameState.get_time_left(ItemDB.SpyId.PLAYER2))
 	player_panel.update_inventory(null)
 	ai_panel.update_inventory(null)
+	GameSettings.setting_changed.connect(_on_setting_changed)
 	relayout_for_display()
+
+
+func _process(_delta: float) -> void:
+	if not visible:
+		return
+	_refresh_prompts()
+	_sync_guide_visibility()
 
 
 func relayout_for_display() -> void:
@@ -49,6 +56,7 @@ func relayout_for_display() -> void:
 	controls_guide.position = central.position + Vector2(guide_pad, guide_pad)
 	controls_guide.size = central.size - Vector2(guide_pad * 2.0, guide_pad * 2.0)
 	controls_guide.refresh()
+	_sync_guide_visibility()
 	player_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	player_panel.position = Vector2(stats_left, 0.0)
 	player_panel.size = Vector2(stats_w, mid_y)
@@ -78,6 +86,19 @@ func bind_player(player: Player) -> void:
 	player_panel.update_ammo(null, &"")
 	_refresh_ammo_displays()
 	controls_guide.refresh()
+
+
+func unbind() -> void:
+	_disconnect_spy_ui(bound_player, _on_player_weapon_changed, _on_player_held_changed)
+	_disconnect_spy_ui(bound_opponent, _on_opponent_weapon_changed, _on_opponent_held_changed)
+	bound_player = null
+	bound_opponent = null
+	if player_panel != null:
+		player_panel.set_prompt("")
+		player_panel.update_hands(null)
+	if ai_panel != null:
+		ai_panel.set_prompt("")
+		ai_panel.update_hands(null)
 
 
 func bind_world(mansion: Mansion) -> void:
@@ -255,11 +276,6 @@ func _on_exit_reached(spy_id: int) -> void:
 		flash_message("Te faltan objetos para escapar")
 
 
-func _on_item_blocked(spy_id: int) -> void:
-	if spy_id == ItemDB.SpyId.PLAYER1:
-		flash_message("Primero necesitas el maletín")
-
-
 func _on_suitcase_state_changed(spy_id: int) -> void:
 	_on_inventory_changed(spy_id)
 	if spy_id == ItemDB.SpyId.PLAYER1:
@@ -292,6 +308,47 @@ func flash_message(text: String) -> void:
 	_message_tween = create_tween()
 	_message_tween.tween_interval(1.15)
 	_message_tween.tween_property(message_panel, "modulate:a", 0.0, 0.7)
+
+
+func _refresh_prompts() -> void:
+	if player_panel == null or not GameState.running:
+		if player_panel != null:
+			player_panel.set_prompt("")
+		if ai_panel != null:
+			ai_panel.set_prompt("")
+		return
+	if bound_player != null and not is_instance_valid(bound_player):
+		bound_player = null
+	if bound_opponent != null and not is_instance_valid(bound_opponent):
+		bound_opponent = null
+	player_panel.set_prompt(_prompt_for(bound_player, 0))
+	if bound_opponent is Player:
+		ai_panel.set_prompt(_prompt_for(bound_opponent as Player, 1))
+	else:
+		ai_panel.set_prompt("")
+
+
+func _prompt_for(spy: SpyBase, player_index: int) -> String:
+	if spy == null or not is_instance_valid(spy) or spy.interaction == null or not GameState.running:
+		return ""
+	if spy is Player and (spy as Player).input_blocked:
+		return ""
+	var action: String = spy.interaction.nearby_prompt()
+	if action.is_empty():
+		return ""
+	var key: String = InputBindings.get_binding_short_label(player_index, "interact" if player_index == 0 else "p2_interact")
+	return "[%s]  %s" % [key, action]
+
+
+func _sync_guide_visibility() -> void:
+	if controls_guide == null:
+		return
+	controls_guide.visible = GameSettings.show_controls_guide
+
+
+func _on_setting_changed(option_id: String, _value: Variant) -> void:
+	if option_id == "show_controls_guide":
+		_sync_guide_visibility()
 
 
 func set_room_label(room: Room) -> void:

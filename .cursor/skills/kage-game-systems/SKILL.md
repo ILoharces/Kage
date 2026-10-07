@@ -85,7 +85,7 @@ Los espías (`Player`, `Player2`) están dentro de `PlayerViewport/Mansion`. **`
 - **Movimiento**: ya usa polling (`Input.get_vector` en `_physics_process`) — correcto.
 - **Disparo**: `Input.is_action_just_pressed(_get_fire_action())` en `Player._process`; P2 sobreescribe `_get_fire_action()` → `"p2_fire_weapon"`.
 - **Interactuar y colocar**: mismo polling en `Player._poll_world_input()`. E elige el objetivo más cercano (puerta, objeto o mueble).
-- **Rueda de trampas**: `next_trap` / `p2_next_trap` se mantiene pulsada. `TrapWheel` (CanvasLayer en la raíz, no en el SubViewport) aparece en el cursor. Clic de disparo o soltar la tecla sobre un sector equipa. Si hay trampa en la mano, la X del centro la suelta; el centro vacío o fuera cierra sin cambiar las manos. Mientras está abierta, ese jugador no actualiza apuntado ni dispara.
+- **Rueda de trampas**: `next_trap` / `p2_next_trap` se mantiene pulsada. `TrapWheel` (CanvasLayer en la raíz, no en el SubViewport) aparece en el cursor. Clic de disparo o soltar la tecla sobre un sector equipa. Anillo interior = trampas, anillo exterior = contramedidas (equipar con `SpyBase.equip_trap` / `equip_counter`). Si hay herramienta en la mano, la X del centro la suelta (`release_tool_selection`); el centro vacío o fuera cierra sin cambiar las manos. Mientras está abierta, ese jugador no actualiza apuntado ni dispara.
 - No mover estas acciones de vuelta a `_unhandled_input` sin resolver enrutado de input al SubViewport.
 
 ## Espías: visual, hitbox y animación

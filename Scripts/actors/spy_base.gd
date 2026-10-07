@@ -4,8 +4,6 @@ class_name SpyBase
 # Logica comun entre el jugador y la IA. Subclases implementan input;
 # movimiento, combate, interaccion y dibujo viven en componentes.
 
-@warning_ignore("unused_signal")
-signal search_started(furniture: Furniture)
 signal search_finished(furniture: Furniture)
 signal stunned_changed(is_stunned: bool)
 signal health_changed(current: float, maximum: float)
@@ -36,10 +34,6 @@ var aim_direction: Vector2 = Vector2.RIGHT
 var health: float = MAX_HEALTH
 var is_alive: bool = true
 var alive_modulate: Color = Color.WHITE
-var search_timer: float = 0.0
-var searching_furniture: Furniture = null
-var search_progress: ColorRect = null
-var search_progress_bg: ColorRect = null
 var open_furniture: Furniture = null
 var nearby_pickup: Node = null
 var held: HeldInventory = null
@@ -69,7 +63,6 @@ func _ready() -> void:
 	interaction = SpyInteraction.new(self)
 	_build_collider()
 	_build_probe()
-	_build_search_indicator()
 	held = HeldInventory.new()
 	held.sync_carried_from_inventory(spy_id)
 	if not GameState.inventory_changed.is_connected(_on_inventory_changed):
@@ -104,11 +97,12 @@ func is_springing() -> bool:
 
 
 func is_operational() -> bool:
-	return is_alive and not is_stunned() and not is_searching()
+	return is_alive and not is_stunned()
 
 
-func is_searching() -> bool:
-	return search_timer > 0.0
+## Puede interactuar con el mundo (muebles, puertas, trampas).
+func can_act() -> bool:
+	return is_operational() and not is_springing()
 
 
 func set_orbital_targeting(active: bool) -> void:
@@ -139,10 +133,6 @@ func try_place_trap(trap_id: int) -> bool:
 
 func refresh_hands_from_inventory() -> void:
 	interaction.refresh_hands_from_inventory()
-
-
-func prepare_hands_for_trap(trap_id: int) -> bool:
-	return interaction.prepare_hands_for_trap(trap_id)
 
 
 func respawn_in_room(room: Room) -> void:
@@ -187,45 +177,20 @@ func reset_held_for_match() -> void:
 	emit_held_changed()
 
 
-func equip_trap_from_trapulator(trap_id: int) -> bool:
-	if held == null:
-		return false
-	return prepare_hands_for_trap(trap_id)
+func equip_trap(trap_id: int) -> bool:
+	return interaction.equip_tool(HeldInventory.Kind.TRAP, trap_id)
 
 
-func release_trap_selection() -> void:
-	if held == null or not held.is_holding_trap():
+func equip_counter(counter_id: int) -> bool:
+	return interaction.equip_tool(HeldInventory.Kind.COUNTER, counter_id)
+
+
+## Suelta la trampa o contramedida de la mano (vuelve al stock) y recupera el botín.
+func release_tool_selection() -> void:
+	if held == null or not held.is_holding_tool():
 		return
-	held.release_trap()
+	held.release_tool()
 	refresh_hands_from_inventory()
-	emit_held_changed()
-
-
-func cycle_held_trap() -> void:
-	if held == null:
-		return
-	var available: Array[int] = held.get_available_traps(spy_id)
-	if available.is_empty():
-		release_trap_selection()
-		return
-	if not held.is_holding_trap():
-		prepare_hands_for_trap(available[0])
-		return
-	var current_idx: int = available.find(held.get_trap_id())
-	if current_idx < 0:
-		_swap_held_trap(available[0])
-		return
-	var next_idx: int = current_idx + 1
-	if next_idx >= available.size():
-		release_trap_selection()
-		return
-	_swap_held_trap(available[next_idx])
-
-
-func _swap_held_trap(trap_id: int) -> void:
-	if held == null:
-		return
-	held.set_trap(trap_id)
 	emit_held_changed()
 
 
@@ -300,21 +265,6 @@ func update_body_collider() -> void:
 	var foot_w: float = body_w * 2.0 * PHYSICS_FOOT_WIDTH_RATIO
 	_body_shape.size = Vector2(foot_w, foot_h)
 	_body_collider.position = Vector2(0.0, foot_y - foot_h * 0.5)
-	_update_search_indicator(metrics)
-
-
-func _update_search_indicator(metrics: Dictionary) -> void:
-	if search_progress_bg == null or search_progress == null:
-		return
-	var head_top_y: float = metrics["head_top_y"] as float
-	var body_w: float = metrics["body_w"] as float
-	var bar_w: float = body_w * 2.4
-	var bar_h: float = 4.0 * COLLIDER_SCALE * lerpf(0.82, 1.0, metrics["depth"] as float)
-	var bar_y: float = head_top_y - bar_h * 1.6
-	search_progress_bg.size = Vector2(bar_w, bar_h)
-	search_progress_bg.position = Vector2(-bar_w * 0.5, bar_y)
-	search_progress.size = Vector2(0.0, bar_h)
-	search_progress.position = Vector2(-bar_w * 0.5, bar_y)
 
 
 func emit_weapon_changed() -> void:
@@ -329,8 +279,13 @@ func set_current_room(room: Room) -> void:
 	movement.set_current_room(room)
 
 
-func teleport_to_room(room: Room, entry_dir: String, from_room: Room = null) -> void:
-	movement.teleport_to_room(room, entry_dir, from_room)
+func teleport_to_room(
+	room: Room,
+	entry_dir: String,
+	from_room: Room = null,
+	spawn_override: Vector2 = Vector2.INF
+) -> void:
+	movement.teleport_to_room(room, entry_dir, from_room, spawn_override)
 
 
 func arm_passage_entry_block(room: Room, entry_dir: String) -> void:
@@ -376,25 +331,6 @@ func _build_probe() -> void:
 	add_child(probe)
 	probe.area_entered.connect(_on_probe_area_entered)
 	probe.area_exited.connect(_on_probe_area_exited)
-
-
-func _build_search_indicator() -> void:
-	search_progress_bg = ColorRect.new()
-	search_progress_bg.size = Vector2(27.2, 4.0) * COLLIDER_SCALE
-	search_progress_bg.position = Vector2(-13.6, -19.2) * COLLIDER_SCALE
-	search_progress_bg.color = Color(0, 0, 0, 0.6)
-	search_progress_bg.visible = false
-	search_progress_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	search_progress_bg.z_index = 10
-	add_child(search_progress_bg)
-	search_progress = ColorRect.new()
-	search_progress.size = Vector2(0, 4.0 * COLLIDER_SCALE)
-	search_progress.position = Vector2(-13.6, -19.2) * COLLIDER_SCALE
-	search_progress.color = Color("#ffeb3b")
-	search_progress.visible = false
-	search_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	search_progress.z_index = 11
-	add_child(search_progress)
 
 
 func _on_probe_area_entered(area: Area2D) -> void:

@@ -111,8 +111,6 @@ func spawn_actors(layout: LevelLayout) -> void:
 		mansion.add_child(mansion.ai_spy)
 		mansion.ai_spy.set_current_room(ai_room)
 		mansion.ai_spy.set_mansion(mansion)
-		mansion.ai_spy.set_physics_process(false)
-		mansion.ai_spy.visible = false
 	else:
 		mansion.player2 = Mansion.Player2Scene.instantiate() as Player2
 		mansion.player2.position = ai_room.get_center_world_pos()

@@ -10,7 +10,6 @@ signal inventory_changed(spy_id: int)
 signal traps_changed(spy_id: int)
 signal game_over(winner_id: int)
 signal exit_reached(spy_id: int)
-signal item_blocked_no_suitcase(spy_id: int)
 signal map_overlay_close_requested
 signal suitcase_dropped(spy_id: int)
 signal suitcase_recovered(spy_id: int)
@@ -23,11 +22,12 @@ signal respawn_tick(spy_id: int, remaining: float)
 signal respawn_finished(spy_id: int)
 
 const WINNER_NONE: int = -1
+const WINNER_TIMEOUT: int = -2
 const PLACEHOLDER_PISTOL_ID: StringName = &"placeholder_pistol"
 const MACHINE_GUN_ID: StringName = &"machine_gun"
 const ORBITAL_CANNON_ID: StringName = &"orbital_cannon"
 const DEFAULT_MATCH_CONFIG: MatchConfig = preload("res://resources/match_config.tres")
-const WINNER_TIMEOUT: int = -2
+const SPY_IDS: Array[int] = [ItemDB.SpyId.PLAYER1, ItemDB.SpyId.PLAYER2]
 
 enum MatchEndReason {
 	NONE,
@@ -36,6 +36,7 @@ enum MatchEndReason {
 	WEAPON,
 	TIMEOUT,
 }
+
 const _DROPPED_SUITCASE_SCRIPT: GDScript = preload("res://Scripts/world/dropped_suitcase.gd")
 
 var time_left_by_spy: Dictionary = {}
@@ -44,19 +45,17 @@ var running: bool = false
 var map_overlay_open: bool = false
 
 var items_by_spy: Dictionary = {}
-var weapons_by_spy: Dictionary = {}
-var traps_by_spy: Dictionary = {}
-var counters_by_spy: Dictionary = {}
+var stock: TrapStock = TrapStock.new()
 var elimination_trap_id: int = -1
 var elimination_killer_id: int = WINNER_NONE
 var elimination_weapon_id: StringName = &""
 var match_end_reason: MatchEndReason = MatchEndReason.NONE
-var _dropped_suitcases: Dictionary = {}
 var match_config: MatchConfig = DEFAULT_MATCH_CONFIG
 ## Si es false, el espia negro lo controla un segundo jugador local.
 var use_ai: bool = true
 
 var consecutive_deaths_without_kill: Dictionary = {}
+var _dropped_suitcases: Dictionary = {}
 var _respawn_remaining: Dictionary = {}
 var _respawn_spy_refs: Dictionary = {}
 
@@ -66,33 +65,24 @@ func _ready() -> void:
 	reset_match()
 
 
+# --- Ciclo de partida ---------------------------------------------------------
+
 func reset_match() -> void:
 	winner = WINNER_NONE
-	elimination_trap_id = -1
-	elimination_killer_id = WINNER_NONE
-	elimination_weapon_id = &""
+	_clear_elimination()
 	match_end_reason = MatchEndReason.NONE
 	# use_ai se conserva entre reset_match y lo fijan los menus antes de iniciar.
 	_clear_all_dropped_suitcases()
 	_cancel_all_respawns()
 	running = true
 	map_overlay_open = false
-	var spy_ids: Array[int] = [ItemDB.SpyId.PLAYER1, ItemDB.SpyId.PLAYER2]
+	stock.reset(match_config, SPY_IDS)
 	var duration: float = match_config.match_duration
-	for spy_id: int in spy_ids:
+	for spy_id: int in SPY_IDS:
 		time_left_by_spy[spy_id] = duration
 		consecutive_deaths_without_kill[spy_id] = 0
 		var inv: Array[int] = []
 		items_by_spy[spy_id] = inv
-		weapons_by_spy[spy_id] = {}
-		var traps: Dictionary = {}
-		var counters: Dictionary = {}
-		for trap_id: int in ItemDB.get_all_traps():
-			traps[trap_id] = match_config.starting_traps_per_kind
-		for counter_id: int in ItemDB.get_all_counters():
-			counters[counter_id] = match_config.starting_counters_per_kind
-		traps_by_spy[spy_id] = traps
-		counters_by_spy[spy_id] = counters
 		inventory_changed.emit(spy_id)
 		weapons_changed.emit(spy_id)
 		traps_changed.emit(spy_id)
@@ -102,42 +92,81 @@ func reset_match() -> void:
 func _process(delta: float) -> void:
 	if not running:
 		return
-	_tick_respawns(delta)
+	if match_config.match_timer_enabled:
+		_tick_match_timers(delta)
+	if running:
+		_tick_respawns(delta)
 
 
 func _tick_match_timers(delta: float) -> void:
-	for spy_id: int in time_left_by_spy.keys():
-		var current: float = float(time_left_by_spy[spy_id])
-		if current <= 0.0:
-			continue
-		current = maxf(0.0, current - delta)
-		time_left_by_spy[spy_id] = current
-		time_changed.emit(spy_id, current)
-		if current <= 0.0:
-			_on_spy_timeout(spy_id)
-
-
-func _on_spy_timeout(loser_id: int) -> void:
-	_cancel_all_respawns()
-	running = false
-	match_end_reason = MatchEndReason.TIMEOUT
-	for spy_id: int in time_left_by_spy.keys():
-		if spy_id != loser_id:
-			winner = spy_id
-			game_over.emit(winner)
+	for spy_id: int in SPY_IDS:
+		_apply_time_penalty(spy_id, delta)
+		if not running:
 			return
-	winner = WINNER_TIMEOUT
-	game_over.emit(winner)
 
 
 func get_time_left(spy_id: int) -> float:
 	return float(time_left_by_spy.get(spy_id, 0.0))
 
 
+func _apply_time_penalty(spy_id: int, amount: float) -> void:
+	if amount <= 0.0 or not time_left_by_spy.has(spy_id):
+		return
+	var current: float = float(time_left_by_spy[spy_id])
+	if current <= 0.0:
+		return
+	current = maxf(0.0, current - amount)
+	time_left_by_spy[spy_id] = current
+	time_changed.emit(spy_id, current)
+	if current <= 0.0:
+		_on_spy_timeout(spy_id)
+
+
+func _on_spy_timeout(loser_id: int) -> void:
+	var other: int = WINNER_TIMEOUT
+	for spy_id: int in SPY_IDS:
+		if spy_id != loser_id:
+			other = spy_id
+	_end_match(other, MatchEndReason.TIMEOUT)
+
+
+func notify_exit_reached(spy_id: int) -> void:
+	if not running:
+		return
+	if not has_all_items(spy_id):
+		exit_reached.emit(spy_id)
+		return
+	_clear_elimination()
+	_end_match(spy_id, MatchEndReason.ESCAPE)
+
+
+func _end_match(winner_id: int, reason: MatchEndReason) -> void:
+	_cancel_all_respawns()
+	running = false
+	match_end_reason = reason
+	winner = winner_id
+	game_over.emit(winner)
+
+
+func _clear_elimination() -> void:
+	elimination_trap_id = -1
+	elimination_killer_id = WINNER_NONE
+	elimination_weapon_id = &""
+
+
+func notify_human(spy_id: int, text: String) -> void:
+	if text.is_empty():
+		return
+	if spy_id == ItemDB.SpyId.PLAYER1 or (not use_ai and spy_id == ItemDB.SpyId.PLAYER2):
+		player_notice.emit(text)
+
+
+# --- Muerte y respawn ---------------------------------------------------------
+
 func notify_spy_died(victim_id: int, killer_id: int, trap_id: int, weapon_id: StringName) -> void:
 	if not running:
 		return
-	if killer_id == ItemDB.SpyId.PLAYER1 or killer_id == ItemDB.SpyId.PLAYER2:
+	if SPY_IDS.has(killer_id):
 		consecutive_deaths_without_kill[killer_id] = 0
 	elimination_trap_id = trap_id
 	elimination_killer_id = killer_id
@@ -168,17 +197,6 @@ func start_respawn(spy: SpyBase) -> void:
 	_respawn_spy_refs[spy_id] = spy
 	respawn_started.emit(spy_id, duration)
 	respawn_tick.emit(spy_id, duration)
-
-
-func _apply_time_penalty(spy_id: int, amount: float) -> void:
-	if amount <= 0.0 or not time_left_by_spy.has(spy_id):
-		return
-	var current: float = float(time_left_by_spy[spy_id])
-	current = maxf(0.0, current - amount)
-	time_left_by_spy[spy_id] = current
-	time_changed.emit(spy_id, current)
-	if current <= 0.0:
-		_on_spy_timeout(spy_id)
 
 
 func _tick_respawns(delta: float) -> void:
@@ -218,15 +236,11 @@ func _get_mansion() -> Mansion:
 	return main.game_views.mansion
 
 
-func _clear_respawn_state() -> void:
+func _cancel_all_respawns() -> void:
+	var pending: Array = _respawn_remaining.keys()
 	consecutive_deaths_without_kill.clear()
 	_respawn_remaining.clear()
 	_respawn_spy_refs.clear()
-
-
-func _cancel_all_respawns() -> void:
-	var pending: Array = _respawn_remaining.keys()
-	_clear_respawn_state()
 	for spy_id: Variant in pending:
 		respawn_finished.emit(int(spy_id))
 
@@ -237,96 +251,50 @@ func drop_all_loot_on_death(spy: SpyBase) -> void:
 	var room: Room = spy.current_room
 	var world_pos: Vector2 = spy.global_position
 	var spy_id: int = spy.spy_id
-	if spy.held != null:
-		if spy.held.is_holding_weapon():
-			drop_weapon_from_hands(spy)
-		elif spy.held.is_holding_carried():
-			drop_carried_to_ground(spy_id, room, world_pos, spy.held)
-		elif spy.held.is_holding_trap():
-			spy.held.release_trap()
-			spy.emit_held_changed()
-		else:
-			spy.held.clear()
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	if not inv.is_empty():
-		if has_suitcase(spy_id):
-			_drop_suitcase_bundle(spy_id, room, world_pos)
-		else:
-			var stored: Array[int] = []
-			for item_id: Variant in inv:
-				stored.append(int(item_id))
-			items_by_spy[spy_id] = []
-			inventory_changed.emit(spy_id)
-			for item_id: int in stored:
-				spawn_dropped_item(room, world_pos, item_id)
-	_clear_spy_trap_stock(spy_id)
-
-
-func _clear_spy_trap_stock(spy_id: int) -> void:
-	var traps: Dictionary = traps_by_spy.get(spy_id, {}) as Dictionary
-	for trap_id: int in ItemDB.get_all_traps():
-		traps[trap_id] = 0
-	traps_by_spy[spy_id] = traps
-	var counters: Dictionary = counters_by_spy.get(spy_id, {}) as Dictionary
-	for counter_id: int in ItemDB.get_all_counters():
-		counters[counter_id] = 0
-	counters_by_spy[spy_id] = counters
+	empty_hands(spy)
+	if has_suitcase(spy_id):
+		_drop_suitcase_bundle(spy_id, room, world_pos)
+	else:
+		for item_id: int in _take_all_items(spy_id):
+			spawn_dropped_item(room, world_pos, item_id)
+	stock.clear_spy(spy_id)
 	traps_changed.emit(spy_id)
 
 
-func has_suitcase(spy_id: int) -> bool:
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	return inv.has(ItemDB.ItemId.SUITCASE)
+# --- Manos --------------------------------------------------------------------
 
-
-func drop_carried_to_ground(spy_id: int, room: Room, world_pos: Vector2, held: HeldInventory) -> bool:
-	if room == null or held == null or not held.is_holding_carried():
+## Suelta lo que el espía lleva en la mano: arma y objetos al suelo; trampa o contramedida vuelven al stock.
+func empty_hands(spy: SpyBase) -> bool:
+	if spy == null or spy.held == null:
 		return false
-	if held.is_holding_suitcase():
-		var dropped: bool = _drop_suitcase_bundle(spy_id, room, world_pos)
-		if dropped:
-			held.clear()
-		return dropped
-	var item_id: int = held.held_id
-	if not remove_item(spy_id, item_id):
-		return false
-	spawn_dropped_item(room, world_pos, item_id)
-	held.clear()
-	inventory_changed.emit(spy_id)
+	if spy.held.is_holding_weapon():
+		return drop_weapon_from_hands(spy)
+	if spy.held.is_holding_tool():
+		spy.held.clear()
+		spy.emit_held_changed()
+		return true
+	if spy.held.is_holding_carried():
+		if spy.current_room == null:
+			return false
+		if not drop_carried_to_ground(spy.spy_id, spy.current_room, spy.global_position, spy.held):
+			return false
+		spy.emit_held_changed()
 	return true
 
 
-func _drop_suitcase_bundle(spy_id: int, room: Room, world_pos: Vector2) -> bool:
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	if inv.is_empty():
-		return false
-	var stored: Array[int] = []
-	for item_id: Variant in inv:
-		stored.append(int(item_id))
-	items_by_spy[spy_id] = []
-	inventory_changed.emit(spy_id)
-	var dropped: Area2D = _DROPPED_SUITCASE_SCRIPT.new() as Area2D
-	dropped.call("setup", spy_id, stored)
-	var local_offset: Vector2 = Vector2(randf_range(-16.0, 16.0), randf_range(-8.0, 16.0))
-	dropped.position = world_pos - room.global_position + local_offset
-	room.add_child(dropped)
-	_dropped_suitcases[spy_id] = dropped
-	suitcase_dropped.emit(spy_id)
-	return true
+func _sync_carried_hands(spy: SpyBase) -> void:
+	if spy == null or spy.held == null:
+		return
+	if spy.held.is_holding_weapon() or spy.held.is_holding_tool():
+		return
+	if spy.held.sync_carried_from_inventory(spy.spy_id):
+		spy.emit_held_changed()
 
 
-func spawn_dropped_item(room: Room, world_pos: Vector2, item_id: int) -> void:
-	var dropped: DroppedItem = DroppedItem.new()
-	dropped.item_id = item_id
-	var local_offset: Vector2 = Vector2(randf_range(-16.0, 16.0), randf_range(-8.0, 16.0))
-	dropped.position = world_pos - room.global_position + local_offset
-	room.add_child(dropped)
-
+# --- Armas --------------------------------------------------------------------
 
 func get_equipped_ammo_label(spy: SpyBase, weapon_id: StringName) -> String:
-	if spy == null or weapon_id.is_empty() or spy.held == null:
-		return ""
-	if not spy.held.is_holding_weapon() or spy.held.get_weapon_id() != weapon_id:
+	if not _is_holding_weapon(spy, weapon_id):
 		return ""
 	var weapon: WeaponData = WeaponDB.get_weapon(weapon_id)
 	if weapon == null:
@@ -337,22 +305,22 @@ func get_equipped_ammo_label(spy: SpyBase, weapon_id: StringName) -> String:
 
 
 func has_weapon(spy: SpyBase, weapon_id: StringName) -> bool:
-	if spy == null or spy.held == null or weapon_id.is_empty():
-		return false
-	if not spy.held.is_holding_weapon() or spy.held.get_weapon_id() != weapon_id:
-		return false
-	return spy.held.has_weapon_ammo()
+	return _is_holding_weapon(spy, weapon_id) and spy.held.has_weapon_ammo()
 
 
 func consume_weapon_ammo(spy: SpyBase, weapon_id: StringName) -> bool:
-	if spy == null or spy.held == null:
-		return false
-	if not spy.held.is_holding_weapon() or spy.held.get_weapon_id() != weapon_id:
+	if not _is_holding_weapon(spy, weapon_id):
 		return false
 	if not spy.held.consume_weapon_ammo():
 		return false
 	weapons_changed.emit(spy.spy_id)
 	return true
+
+
+func _is_holding_weapon(spy: SpyBase, weapon_id: StringName) -> bool:
+	if spy == null or spy.held == null or weapon_id.is_empty():
+		return false
+	return spy.held.is_holding_weapon() and spy.held.get_weapon_id() == weapon_id
 
 
 func spawn_dropped_weapon(
@@ -364,9 +332,7 @@ func spawn_dropped_weapon(
 	var dropped: DroppedWeapon = DroppedWeapon.new()
 	dropped.weapon_id = weapon_id
 	dropped.ammo_count = ammo
-	var local_offset: Vector2 = Vector2(randf_range(-16.0, 16.0), randf_range(-8.0, 16.0))
-	dropped.position = world_pos - room.global_position + local_offset
-	room.add_child(dropped)
+	_place_on_floor(dropped, room, world_pos)
 
 
 func drop_weapon_from_hands(spy: SpyBase) -> bool:
@@ -388,34 +354,138 @@ func drop_weapon_from_hands(spy: SpyBase) -> bool:
 func try_pickup_weapon_in_hands(spy: SpyBase, weapon_id: StringName, ammo: int = -1) -> bool:
 	if spy == null or spy.held == null or weapon_id.is_empty():
 		return false
-	if WeaponDB.get_weapon(weapon_id) == null:
+	if WeaponDB.get_weapon(weapon_id) == null or spy.current_room == null:
 		return false
-	if spy.current_room == null:
-		return false
-	if spy.held.is_holding_weapon() and spy.held.get_weapon_id() == weapon_id:
-		_sync_orbital_targeting(spy)
+	if _is_holding_weapon(spy, weapon_id):
+		spy.set_orbital_targeting(false)
 		spy.emit_weapon_changed()
 		return true
-	if not _clear_hands_for_weapon_pickup(spy):
+	if not empty_hands(spy):
 		return false
 	spy.held.set_weapon(weapon_id, ammo)
 	spy.emit_held_changed()
 	spy.emit_weapon_changed()
-	_sync_orbital_targeting(spy)
+	spy.set_orbital_targeting(false)
 	weapons_changed.emit(spy.spy_id)
 	return true
 
 
-func _clear_hands_for_weapon_pickup(spy: SpyBase) -> bool:
-	if spy.held.is_holding_weapon():
-		if not drop_weapon_from_hands(spy):
+func equip_weapon_in_hands(spy: SpyBase, weapon_id: StringName) -> bool:
+	return try_pickup_weapon_in_hands(spy, weapon_id, -1)
+
+
+# --- Botín --------------------------------------------------------------------
+
+func get_items(spy_id: int) -> Array:
+	return items_by_spy.get(spy_id, []) as Array
+
+
+func owns_item(spy_id: int, item_id: int) -> bool:
+	return get_items(spy_id).has(item_id)
+
+
+func has_suitcase(spy_id: int) -> bool:
+	return owns_item(spy_id, ItemDB.ItemId.SUITCASE)
+
+
+func has_all_items(spy_id: int) -> bool:
+	var inv: Array = get_items(spy_id)
+	for item_id: int in ItemDB.get_all_items():
+		if not inv.has(item_id):
 			return false
-	if spy.held.is_holding_trap():
-		spy.held.release_trap()
-		spy.emit_held_changed()
-	if spy.held.is_holding_carried():
-		if not drop_carried_to_ground(spy.spy_id, spy.current_room, spy.global_position, spy.held):
-			return false
+	return true
+
+
+func add_item(spy_id: int, item_id: int) -> bool:
+	var inv: Array = get_items(spy_id)
+	if inv.has(item_id):
+		return false
+	inv.append(item_id)
+	items_by_spy[spy_id] = inv
+	inventory_changed.emit(spy_id)
+	return true
+
+
+func remove_item(spy_id: int, item_id: int) -> bool:
+	var inv: Array = get_items(spy_id)
+	var idx: int = inv.find(item_id)
+	if idx < 0:
+		return false
+	inv.remove_at(idx)
+	items_by_spy[spy_id] = inv
+	inventory_changed.emit(spy_id)
+	return true
+
+
+# Sin maletín solo cabe un objeto en la mano: el anterior cae al suelo.
+# Con maletín, o al recoger el propio maletín, el botín se guarda dentro.
+func collect_item(spy: SpyBase, item_id: int) -> bool:
+	if spy == null or spy.current_room == null or item_id < 0:
+		return false
+	var spy_id: int = spy.spy_id
+	if owns_item(spy_id, item_id):
+		return false
+	var stores_loot: bool = has_suitcase(spy_id) or item_id == ItemDB.ItemId.SUITCASE
+	if not stores_loot:
+		for old_id: int in _take_all_items(spy_id):
+			spawn_dropped_item(spy.current_room, spy.global_position, old_id)
+	var inv: Array = get_items(spy_id)
+	inv.append(item_id)
+	items_by_spy[spy_id] = inv
+	_sync_carried_hands(spy)
+	inventory_changed.emit(spy_id)
+	return true
+
+
+func _take_all_items(spy_id: int) -> Array[int]:
+	var taken: Array[int] = []
+	for raw_id: Variant in get_items(spy_id):
+		taken.append(int(raw_id))
+	if not taken.is_empty():
+		items_by_spy[spy_id] = []
+		inventory_changed.emit(spy_id)
+	return taken
+
+
+func _merge_items(spy_id: int, stored: Array[int]) -> void:
+	var inv: Array = get_items(spy_id)
+	for item_id: int in stored:
+		if not inv.has(item_id):
+			inv.append(item_id)
+	items_by_spy[spy_id] = inv
+
+
+func spawn_dropped_item(room: Room, world_pos: Vector2, item_id: int) -> void:
+	var dropped: DroppedItem = DroppedItem.new()
+	dropped.item_id = item_id
+	_place_on_floor(dropped, room, world_pos)
+
+
+func drop_carried_to_ground(spy_id: int, room: Room, world_pos: Vector2, held: HeldInventory) -> bool:
+	if room == null or held == null or not held.is_holding_carried():
+		return false
+	if held.is_holding_suitcase():
+		var dropped: bool = _drop_suitcase_bundle(spy_id, room, world_pos)
+		if dropped:
+			held.clear()
+		return dropped
+	var item_id: int = held.held_id
+	if not remove_item(spy_id, item_id):
+		return false
+	spawn_dropped_item(room, world_pos, item_id)
+	held.clear()
+	return true
+
+
+func _drop_suitcase_bundle(spy_id: int, room: Room, world_pos: Vector2) -> bool:
+	var stored: Array[int] = _take_all_items(spy_id)
+	if stored.is_empty():
+		return false
+	var dropped: Area2D = _DROPPED_SUITCASE_SCRIPT.new() as Area2D
+	dropped.call("setup", spy_id, stored)
+	_place_on_floor(dropped, room, world_pos)
+	_dropped_suitcases[spy_id] = dropped
+	suitcase_dropped.emit(spy_id)
 	return true
 
 
@@ -426,8 +496,7 @@ func try_pickup_ground(spy: SpyBase, node: Node) -> bool:
 		var dropped_weapon: DroppedWeapon = node as DroppedWeapon
 		if dropped_weapon == null or dropped_weapon.weapon_id.is_empty():
 			return false
-		var ammo: int = dropped_weapon.ammo_count
-		if not try_pickup_weapon_in_hands(spy, dropped_weapon.weapon_id, ammo):
+		if not try_pickup_weapon_in_hands(spy, dropped_weapon.weapon_id, dropped_weapon.ammo_count):
 			return false
 		dropped_weapon.queue_free()
 		return true
@@ -438,12 +507,9 @@ func try_pickup_ground(spy: SpyBase, node: Node) -> bool:
 		if owns_item(spy.spy_id, dropped_item.item_id):
 			dropped_item.queue_free()
 			return true
-		if not collect_item(spy, dropped_item.item_id):
+		if not make_room_for_loot(spy) or not collect_item(spy, dropped_item.item_id):
 			return false
 		dropped_item.queue_free()
-		if spy.held != null and spy.held.is_holding_weapon():
-			drop_weapon_from_hands(spy)
-			_sync_carried_hands(spy)
 		return true
 	if node.is_in_group("dropped_suitcase"):
 		return try_pickup_dropped_suitcase(spy, node as Area2D)
@@ -456,15 +522,14 @@ func try_pickup_dropped_suitcase(spy: SpyBase, dropped: Area2D) -> bool:
 	var owner_id: int = int(dropped.get("owner_spy_id"))
 	if not _dropped_suitcases.has(owner_id) or _dropped_suitcases[owner_id] != dropped:
 		return false
+	if not make_room_for_loot(spy):
+		return false
 	var picker_id: int = spy.spy_id
-	var stored: Array[int] = (dropped.get("stored_items") as Array).duplicate()
+	var stored: Array[int] = []
+	for raw_id: Variant in dropped.get("stored_items") as Array:
+		stored.append(int(raw_id))
 	_dropped_suitcases.erase(owner_id)
-	if picker_id == owner_id:
-		_restore_items_to_spy(picker_id, stored)
-	else:
-		_steal_items_from_suitcase(picker_id, stored)
-	if spy.held != null and spy.held.is_holding_weapon():
-		drop_weapon_from_hands(spy)
+	_merge_items(picker_id, stored)
 	_sync_carried_hands(spy)
 	inventory_changed.emit(picker_id)
 	if picker_id == owner_id:
@@ -476,20 +541,13 @@ func try_pickup_dropped_suitcase(spy: SpyBase, dropped: Area2D) -> bool:
 	return true
 
 
-func _restore_items_to_spy(spy_id: int, stored: Array[int]) -> void:
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	for item_id: int in stored:
-		if not inv.has(item_id):
-			inv.append(item_id)
-	items_by_spy[spy_id] = inv
-
-
-func _steal_items_from_suitcase(thief_id: int, stored: Array[int]) -> void:
-	var inv: Array = items_by_spy[thief_id] as Array
-	for item_id: int in stored:
-		if not inv.has(item_id):
-			inv.append(item_id)
-	items_by_spy[thief_id] = inv
+## Coger botín libera la mano si lleva arma, trampa o contramedida.
+func make_room_for_loot(spy: SpyBase) -> bool:
+	if spy.held == null:
+		return false
+	if spy.held.is_holding_weapon() or spy.held.is_holding_tool():
+		return empty_hands(spy)
+	return true
 
 
 func _clear_all_dropped_suitcases() -> void:
@@ -500,164 +558,41 @@ func _clear_all_dropped_suitcases() -> void:
 	_dropped_suitcases.clear()
 
 
-func remove_item(spy_id: int, item_id: int) -> bool:
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	var idx: int = inv.find(item_id)
-	if idx < 0:
-		return false
-	inv.remove_at(idx)
-	items_by_spy[spy_id] = inv
-	inventory_changed.emit(spy_id)
-	return true
+func _place_on_floor(node: Node2D, room: Room, world_pos: Vector2) -> void:
+	var local_offset: Vector2 = Vector2(randf_range(-16.0, 16.0), randf_range(-8.0, 16.0))
+	node.position = world_pos - room.global_position + local_offset
+	room.add_child(node)
 
 
-func owns_item(spy_id: int, item_id: int) -> bool:
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	return inv.has(item_id)
+# --- Trampas y contramedidas --------------------------------------------------
 
-
-func add_item(spy_id: int, item_id: int) -> bool:
-	var inv: Array = items_by_spy[spy_id] as Array
-	if inv.has(item_id):
-		return false
-	inv.append(item_id)
-	inventory_changed.emit(spy_id)
-	return true
-
-
-# Sin maletín solo cabe un objeto en la mano: el anterior cae al suelo.
-# Con maletín, o al recoger el propio maletín, el botín se guarda dentro.
-func collect_item(spy: SpyBase, item_id: int) -> bool:
-	if spy == null or spy.current_room == null or item_id < 0:
-		return false
-	var spy_id: int = spy.spy_id
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	if inv.has(item_id):
-		return false
-	var stores_loot: bool = has_suitcase(spy_id) or item_id == ItemDB.ItemId.SUITCASE
-	if not stores_loot:
-		var previous: Array[int] = []
-		for raw_id: Variant in inv:
-			previous.append(int(raw_id))
-		for old_id: int in previous:
-			if remove_item(spy_id, old_id):
-				spawn_dropped_item(spy.current_room, spy.global_position, old_id)
-	inv = items_by_spy.get(spy_id, []) as Array
-	if inv.has(item_id):
-		return false
-	inv.append(item_id)
-	items_by_spy[spy_id] = inv
-	_sync_carried_hands(spy)
-	inventory_changed.emit(spy_id)
-	return true
-
-
-func _sync_carried_hands(spy: SpyBase) -> void:
-	if spy == null or spy.held == null:
-		return
-	if spy.held.is_holding_weapon() or spy.held.is_holding_trap():
-		return
-	if spy.held.sync_carried_from_inventory(spy.spy_id):
-		spy.emit_held_changed()
-
-
-func remove_random_item(spy_id: int) -> int:
-	var inv: Array = items_by_spy[spy_id] as Array
-	if inv.is_empty():
-		return -1
-	var idx: int = randi() % inv.size()
-	var item_id: int = int(inv[idx])
-	inv.remove_at(idx)
-	inventory_changed.emit(spy_id)
-	return item_id
-
-
-func has_all_items(spy_id: int) -> bool:
-	var inv: Array = items_by_spy.get(spy_id, []) as Array
-	for item_id: int in ItemDB.get_all_items():
-		if not inv.has(item_id):
-			return false
-	return true
-
-
-func get_items(spy_id: int) -> Array:
-	return items_by_spy[spy_id] as Array
-
-
-func add_trap(spy_id: int, trap_id: int, amount: int = 1) -> void:
-	var traps: Dictionary = traps_by_spy[spy_id] as Dictionary
-	traps[trap_id] = int(traps.get(trap_id, 0)) + amount
-	traps_changed.emit(spy_id)
-
-
-func notify_human(spy_id: int, text: String) -> void:
-	if text.is_empty():
-		return
-	if spy_id == ItemDB.SpyId.PLAYER1 or (not use_ai and spy_id == ItemDB.SpyId.PLAYER2):
-		player_notice.emit(text)
+func get_trap_count(spy_id: int, trap_id: int) -> int:
+	return stock.get_trap_count(spy_id, trap_id)
 
 
 func consume_trap(spy_id: int, trap_id: int) -> bool:
-	if match_config.traps_infinite:
-		return true
-	var traps: Dictionary = traps_by_spy[spy_id] as Dictionary
-	var current: int = int(traps.get(trap_id, 0))
-	if current <= 0:
+	if not stock.consume_trap(spy_id, trap_id):
 		return false
-	traps[trap_id] = current - 1
 	traps_changed.emit(spy_id)
 	return true
 
 
-func get_trap_count(spy_id: int, trap_id: int) -> int:
-	if match_config.traps_infinite:
-		return 99
-	var traps: Dictionary = traps_by_spy[spy_id] as Dictionary
-	return int(traps.get(trap_id, 0))
-
-
-func add_counter(spy_id: int, counter_id: int, amount: int = 1) -> void:
-	var counters: Dictionary = counters_by_spy[spy_id] as Dictionary
-	counters[counter_id] = int(counters.get(counter_id, 0)) + amount
+func add_trap(spy_id: int, trap_id: int, amount: int = 1) -> void:
+	stock.add_trap(spy_id, trap_id, amount)
 	traps_changed.emit(spy_id)
-
-
-func consume_counter(spy_id: int, counter_id: int) -> bool:
-	var counters: Dictionary = counters_by_spy[spy_id] as Dictionary
-	var current: int = int(counters.get(counter_id, 0))
-	if current <= 0:
-		return false
-	counters[counter_id] = current - 1
-	traps_changed.emit(spy_id)
-	return true
 
 
 func get_counter_count(spy_id: int, counter_id: int) -> int:
-	var counters: Dictionary = counters_by_spy[spy_id] as Dictionary
-	return int(counters.get(counter_id, 0))
+	return stock.get_counter_count(spy_id, counter_id)
 
 
-func equip_weapon_in_hands(spy: SpyBase, weapon_id: StringName) -> bool:
-	return try_pickup_weapon_in_hands(spy, weapon_id, -1)
+func consume_counter(spy_id: int, counter_id: int) -> bool:
+	if not stock.consume_counter(spy_id, counter_id):
+		return false
+	traps_changed.emit(spy_id)
+	return true
 
 
-func _sync_orbital_targeting(spy: SpyBase) -> void:
-	if spy == null:
-		return
-	spy.set_orbital_targeting(false)
-
-
-func notify_exit_reached(spy_id: int) -> void:
-	if not running:
-		return
-	if has_all_items(spy_id):
-		_cancel_all_respawns()
-		running = false
-		match_end_reason = MatchEndReason.ESCAPE
-		elimination_trap_id = -1
-		elimination_killer_id = WINNER_NONE
-		elimination_weapon_id = &""
-		winner = spy_id
-		game_over.emit(winner)
-	else:
-		exit_reached.emit(spy_id)
+func add_counter(spy_id: int, counter_id: int, amount: int = 1) -> void:
+	stock.add_counter(spy_id, counter_id, amount)
+	traps_changed.emit(spy_id)

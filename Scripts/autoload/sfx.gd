@@ -16,6 +16,10 @@ func play_trap_placed() -> void:
 	_play(_BOMB_PLACE, -6.0)
 
 
+func play_trap_disarmed() -> void:
+	_play(_BOMB_PLACE, -4.0, 1.6)
+
+
 func play_bomb_exploded() -> void:
 	_play(_BOMB_EXPLODE, -2.0)
 

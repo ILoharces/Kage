@@ -3,8 +3,8 @@ class_name ControlsSettingsPanel
 
 # Modo de control por jugador y tabla de referencia (solo lectura).
 
-const COL_CONTROL: float = 132.0
-const COL_PLAYER: float = 168.0
+const COL_CONTROL: float = 220.0
+const COL_PLAYER: float = 230.0
 
 @onready var _scroll: ScrollContainer = $VBox/Scroll
 @onready var _rows_vbox: VBoxContainer = %RowsVBox
@@ -31,21 +31,8 @@ func refresh() -> void:
 	_update_status()
 
 
-func is_listening() -> bool:
-	return false
-
-
-func cancel_listen() -> void:
-	pass
-
-
-func cancel_listen_silent() -> void:
-	pass
-
-
-func grab_initial_focus() -> void:
-	if _first_focus_control != null:
-		_first_focus_control.grab_focus()
+func get_first_focus_control() -> Control:
+	return _first_focus_control
 
 
 func wire_external_focus_down(external: Control) -> void:
@@ -109,7 +96,7 @@ func _add_mode_row(
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(label)
 	var option: OptionButton = OptionButton.new()
-	option.custom_minimum_size = Vector2(COL_PLAYER * 2.0 + 8.0, 36)
+	option.custom_minimum_size = Vector2(COL_PLAYER * 2.0 + 8.0, 40)
 	option.focus_mode = Control.FOCUS_ALL
 	for mode: int in modes:
 		option.add_item(InputBindings.get_control_mode_label(mode as InputBindings.PlayerControlMode, player_index), mode)
@@ -150,8 +137,8 @@ func _add_reference_row(row_data: Dictionary) -> void:
 
 func _make_reference_cell(action: String, player_index: int) -> Label:
 	var cell: Label = Label.new()
-	cell.focus_mode = Control.FOCUS_NONE
-	cell.custom_minimum_size = Vector2(COL_PLAYER, 36)
+	cell.theme_type_variation = &"SectionLabel"
+	cell.custom_minimum_size = Vector2(COL_PLAYER, 32)
 	cell.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cell.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	cell.text = InputBindings.get_binding_label_for_player(player_index, action)
@@ -224,8 +211,8 @@ func _update_status() -> void:
 	var lines: PackedStringArray = PackedStringArray()
 	if GameSettings.use_ai_default:
 		lines.append(
-			"Contra IA: en partida el control se adapta (teclado+raton o mando). "
-			+ "El modo de J1 aqui es solo valor inicial."
+			"Contra la IA el control de Blanco se adapta solo (teclado y ratón o mando); "
+			+ "este modo es solo el inicial."
 		)
 	lines.append(InputBindings.get_control_scheme_summary(0))
 	if not GameSettings.use_ai_default:
@@ -234,7 +221,7 @@ func _update_status() -> void:
 		if InputBindings.has_enough_gamepads_for_local_play():
 			lines.append("Conectados %d mandos." % InputBindings.get_connected_gamepad_count())
 		else:
-			lines.append("Se necesitan 2 mandos para esta configuracion.")
+			lines.append("Se necesitan 2 mandos para esta configuración.")
 	_status_label.text = "\n".join(lines)
 
 
@@ -246,19 +233,10 @@ func _make_row() -> HBoxContainer:
 
 
 func _add_section_title(text: String) -> void:
-	var title: Label = Label.new()
-	title.text = text
-	title.focus_mode = Control.FOCUS_NONE
-	title.add_theme_font_size_override("font_size", 18)
-	title.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT)
-	_rows_vbox.add_child(title)
+	_rows_vbox.add_child(UiKit.label(text.to_upper(), &"SectionLabel"))
 
 
 func _add_header_label(row: HBoxContainer, text: String, min_width: float) -> void:
-	var label: Label = Label.new()
-	label.text = text
-	label.focus_mode = Control.FOCUS_NONE
+	var label: Label = UiKit.label(text, &"HintLabel")
 	label.custom_minimum_size = Vector2(min_width, 0)
-	label.add_theme_font_size_override("font_size", 13)
-	label.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT)
 	row.add_child(label)

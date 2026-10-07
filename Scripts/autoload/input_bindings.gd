@@ -136,7 +136,7 @@ func has_enough_gamepads_for_local_play() -> bool:
 func get_control_mode_label(mode: PlayerControlMode, _player_index: int) -> String:
 	match mode:
 		PlayerControlMode.KEYBOARD_MOUSE:
-			return "Teclado y raton"
+			return "Teclado y ratón"
 		PlayerControlMode.KEYBOARD:
 			return "Teclado"
 		PlayerControlMode.GAMEPAD:
@@ -178,7 +178,18 @@ func get_controls_guide(player_index: int) -> Array[Dictionary]:
 
 
 func get_binding_short_label(player_index: int, action: String) -> String:
-	var full: String = get_binding_label_for_player(player_index, action)
+	return _shorten_label(get_binding_label_for_player(player_index, action))
+
+
+## Etiqueta corta de una acción en teclado o en mando, sin depender del modo activo.
+func get_slot_short_label(action: String, gamepad: bool) -> String:
+	var event: InputEvent = _get_action_slots(action).get(SLOT_GAMEPAD if gamepad else SLOT_KEYBOARD) as InputEvent
+	if event == null:
+		return "—"
+	return _shorten_label(format_event(event))
+
+
+func _shorten_label(full: String) -> String:
 	if full == "Clic izquierdo":
 		return "Clic izq."
 	if full == "Stick L (click)":
@@ -224,7 +235,7 @@ func format_event(event: InputEvent) -> String:
 			MOUSE_BUTTON_MIDDLE:
 				return "Clic central"
 			_:
-				return "Raton boton %d" % int(mouse_event.button_index)
+				return "Ratón botón %d" % int(mouse_event.button_index)
 	if event is InputEventKey:
 		var key_event: InputEventKey = event as InputEventKey
 		var keycode: Key = key_event.physical_keycode
@@ -558,10 +569,13 @@ func _apply_fixed_menu_bindings(action: String) -> void:
 	var device: int = _menu_gamepad_device()
 	match action:
 		"ui_cancel":
+			InputMap.action_add_event(action, _make_key_event(KEY_ESCAPE))
 			InputMap.action_add_event(action, _make_key_event(KEY_BACKSPACE))
 			InputMap.action_add_event(action, _make_joy_button_event(JOY_BUTTON_B, device))
 		"ui_accept":
 			InputMap.action_add_event(action, _make_key_event(KEY_ENTER))
+			InputMap.action_add_event(action, _make_key_event(KEY_KP_ENTER))
+			InputMap.action_add_event(action, _make_key_event(KEY_SPACE))
 			InputMap.action_add_event(action, _make_joy_button_event(JOY_BUTTON_A, device))
 		"ui_up":
 			InputMap.action_add_event(action, _make_key_event(KEY_UP))

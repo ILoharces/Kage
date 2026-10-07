@@ -1,252 +1,209 @@
-extends CanvasLayer
+extends MenuScreen
 class_name SettingsMenu
 
-# Menu de ajustes: pestanas General y Controles.
-
-signal back_pressed
+# Ajustes: pestaña General (generada desde GameSettings) y Controles. Se guardan al cambiar.
 
 enum Tab { GENERAL, CONTROLS }
 
-@onready var _general_tab_button: Button = %GeneralTabButton
-@onready var _controls_tab_button: Button = %ControlsTabButton
-@onready var _general_page: Control = %GeneralPage
-@onready var _controls_page: ControlsSettingsPanel = %ControlsPage
-@onready var _options_vbox: VBoxContainer = %OptionsVBox
-@onready var _back_button: Button = %BackButton
-@onready var _hint_label: Label = %HintLabel
+const _CONTROLS_PANEL_SCENE: PackedScene = preload("res://Scenes/ui/controls_settings_panel.tscn")
 
+var _tab_buttons: Array[Button] = []
+var _general_page: ScrollContainer = null
+var _options_vbox: VBoxContainer = null
+var _controls_page: ControlsSettingsPanel = null
+var _back_button: Button = null
+var _hint_label: Label = null
 var _widgets_by_id: Dictionary = {}
-var _current_tab: int = Tab.GENERAL
+var _first_option: Control = null
+var _current_tab: Tab = Tab.GENERAL
+var _tab_group: ButtonGroup = null
 
 
 func _ready() -> void:
-	layer = 26
-	process_mode = Node.PROCESS_MODE_ALWAYS
-	visible = false
-	var center: Control = $Center as Control
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_general_tab_button.pressed.connect(func() -> void: _show_tab(Tab.GENERAL))
-	_controls_tab_button.pressed.connect(func() -> void: _show_tab(Tab.CONTROLS))
-	_back_button.pressed.connect(_on_back_requested)
-	NesUiTheme.style_toggle_buttons([_general_tab_button, _controls_tab_button])
-	_build_options()
+	layer = 29
+	super._ready()
 	GameSettings.setting_changed.connect(_on_setting_changed)
-	set_process_unhandled_input(true)
-	_show_tab(Tab.GENERAL)
 
 
-func show_menu() -> void:
+func _build() -> void:
+	UiKit.dim_backdrop(root, 0.6)
+	var content: VBoxContainer = UiKit.centered_panel(root, Vector2(780, 0), 14)
+	content.add_child(UiKit.label("Ajustes", &"HeaderLabel", HORIZONTAL_ALIGNMENT_CENTER))
+
+	var tabs: HBoxContainer = UiKit.hbox(8, BoxContainer.ALIGNMENT_CENTER)
+	content.add_child(tabs)
+	_tab_group = ButtonGroup.new()
+	for tab_name: String in ["General", "Controles"]:
+		var tab_button: Button = UiKit.toggle(tab_name, _tab_group, 180.0)
+		tab_button.pressed.connect(_show_tab.bind(_tab_buttons.size()))
+		tabs.add_child(tab_button)
+		_tab_buttons.append(tab_button)
+	var tab_chain: Array[Control] = []
+	tab_chain.assign(_tab_buttons)
+	UiKit.chain_focus(tab_chain, true, false)
+
+	var pages: Control = Control.new()
+	pages.custom_minimum_size = Vector2(0, 460)
+	pages.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(pages)
+	_general_page = ScrollContainer.new()
+	_general_page.follow_focus = true
+	_general_page.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pages.add_child(UiKit.full_rect(_general_page))
+	_options_vbox = UiKit.vbox(10)
+	_options_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_general_page.add_child(_options_vbox)
+	_controls_page = _CONTROLS_PANEL_SCENE.instantiate() as ControlsSettingsPanel
+	_controls_page.visible = false
+	pages.add_child(_controls_page)
+	UiKit.full_rect(_controls_page)
+	_build_options()
+
+	_hint_label = UiKit.wrapped_label("", &"HintLabel", HORIZONTAL_ALIGNMENT_CENTER)
+	content.add_child(_hint_label)
+	var actions: HBoxContainer = UiKit.hbox(12, BoxContainer.ALIGNMENT_CENTER)
+	content.add_child(actions)
+	_back_button = UiKit.button("Volver", &"", 200.0)
+	_back_button.pressed.connect(func() -> void: back_requested.emit())
+	actions.add_child(_back_button)
+
+
+func _on_shown() -> void:
 	_sync_widgets_from_settings()
 	_controls_page.refresh()
 	_show_tab(Tab.GENERAL)
-	visible = true
-	_back_button.grab_focus()
 
 
-func hide_menu() -> void:
-	_controls_page.cancel_listen_silent()
-	visible = false
+func _on_hidden() -> void:
 	get_viewport().gui_release_focus()
 
 
-func _on_back_requested() -> void:
-	if _controls_page.is_listening():
-		_controls_page.cancel_listen()
-		return
-	if _current_tab == Tab.CONTROLS:
-		_show_tab(Tab.GENERAL)
-		_back_button.grab_focus()
-		return
-	back_pressed.emit()
+func _initial_focus() -> Control:
+	return _first_option if _first_option != null else _back_button
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
-		return
-	if _handle_tab_bumper(event):
-		get_viewport().set_input_as_handled()
-		return
-	if event.is_action_pressed("ui_cancel"):
-		_on_back_requested()
-		get_viewport().set_input_as_handled()
+	if visible and event is InputEventJoypadButton and event.is_pressed():
+		var button_index: JoyButton = (event as InputEventJoypadButton).button_index
+		if button_index == JOY_BUTTON_LEFT_SHOULDER or button_index == JOY_BUTTON_RIGHT_SHOULDER:
+			_show_tab(posmod(int(_current_tab) + (1 if button_index == JOY_BUTTON_RIGHT_SHOULDER else -1), 2))
+			_grab_initial_focus_for_tab()
+			get_viewport().set_input_as_handled()
+			return
+	super._unhandled_input(event)
 
 
-func _handle_tab_bumper(event: InputEvent) -> bool:
-	if _controls_page.is_listening():
-		return false
-	if not event is InputEventJoypadButton:
-		return false
-	var button_event: InputEventJoypadButton = event as InputEventJoypadButton
-	if not button_event.pressed:
-		return false
-	match button_event.button_index:
-		JOY_BUTTON_LEFT_SHOULDER:
-			_cycle_tab(-1)
-			return true
-		JOY_BUTTON_RIGHT_SHOULDER:
-			_cycle_tab(1)
-			return true
-	return false
-
-
-func _cycle_tab(step: int) -> void:
-	var tab_index: int = posmod(int(_current_tab) + step, 2)
-	_show_tab(tab_index as Tab)
-
-
-func _show_tab(tab: Tab) -> void:
-	_current_tab = tab
-	_general_page.visible = tab == Tab.GENERAL
-	_controls_page.visible = tab == Tab.CONTROLS
-	_general_tab_button.set_pressed_no_signal(tab == Tab.GENERAL)
-	_controls_tab_button.set_pressed_no_signal(tab == Tab.CONTROLS)
-	NesUiTheme.refresh_toggle_button(_general_tab_button)
-	NesUiTheme.refresh_toggle_button(_controls_tab_button)
-	_hint_label.visible = true
-	match tab:
-		Tab.GENERAL:
-			_hint_label.text = "LB/RB cambiar pestaña. Las opciones se guardan automaticamente."
-		Tab.CONTROLS:
-			_hint_label.text = "LB/RB cambiar pestaña. Modo por jugador; controles fijos."
-	if tab == Tab.CONTROLS:
+func _show_tab(tab: int) -> void:
+	_current_tab = tab as Tab
+	_general_page.visible = _current_tab == Tab.GENERAL
+	_controls_page.visible = _current_tab == Tab.CONTROLS
+	_tab_buttons[tab].set_pressed_no_signal(true)
+	for button: Button in _tab_buttons:
+		button.focus_neighbor_bottom = button.get_path_to(_page_first_focus())
+	if _current_tab == Tab.CONTROLS:
 		_controls_page.refresh()
 		_controls_page.wire_external_focus_down(_back_button)
-		_controls_page.grab_initial_focus()
+	_hint_label.text = (
+		"LB / RB: cambiar de pestaña   ·   Los cambios se guardan al momento"
+		if _current_tab == Tab.GENERAL
+		else "LB / RB: cambiar de pestaña   ·   Los controles son fijos; aquí eliges el dispositivo"
+	)
 
+
+func _page_first_focus() -> Control:
+	if _current_tab == Tab.CONTROLS:
+		var first: Control = _controls_page.get_first_focus_control()
+		return first if first != null else _back_button
+	return _first_option if _first_option != null else _back_button
+
+
+func _grab_initial_focus_for_tab() -> void:
+	var target: Control = _page_first_focus()
+	if target != null and target.is_visible_in_tree():
+		target.grab_focus()
+
+
+# --- Opciones generales -------------------------------------------------------
 
 func _build_options() -> void:
-	for child: Node in _options_vbox.get_children():
-		child.queue_free()
-	_widgets_by_id.clear()
 	for section: Dictionary in GameSettings.get_sections():
-		_add_section(section)
-
-
-func _add_section(section: Dictionary) -> void:
-	var title: Label = Label.new()
-	title.text = String(section.get("title", "Ajustes"))
-	title.add_theme_font_size_override("font_size", 20)
-	title.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT)
-	_options_vbox.add_child(title)
-	var options: Array = section.get("options", []) as Array
-	for option: Variant in options:
-		_add_option_row(option as Dictionary)
-	var spacer: Control = Control.new()
-	spacer.custom_minimum_size = Vector2(0, 12)
-	_options_vbox.add_child(spacer)
+		_options_vbox.add_child(UiKit.label(String(section.get("title", "")).to_upper(), &"SectionLabel"))
+		for option: Variant in section.get("options", []) as Array:
+			_add_option_row(option as Dictionary)
+		_options_vbox.add_child(UiKit.spacer(8.0))
 
 
 func _add_option_row(entry: Dictionary) -> void:
 	var option_id: String = String(entry.get("id", ""))
-	var option_type: String = String(entry.get("type", ""))
-	var row: VBoxContainer = VBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
-	match option_type:
+	var row: VBoxContainer = UiKit.vbox(2)
+	var widget: Control = null
+	match String(entry.get("type", "")):
 		"bool":
-			var checkbox: CheckBox = CheckBox.new()
-			checkbox.text = String(entry.get("label", option_id))
-			checkbox.toggled.connect(_on_bool_toggled.bind(option_id))
-			row.add_child(checkbox)
-			_widgets_by_id[option_id] = checkbox
+			var check: CheckButton = CheckButton.new()
+			check.text = String(entry.get("label", option_id))
+			check.toggled.connect(func(pressed: bool) -> void: GameSettings.set_option_value(option_id, pressed))
+			widget = check
+			row.add_child(check)
 		"float":
-			_add_float_option(row, entry, option_id)
+			widget = _add_slider_row(row, entry, option_id)
 		_:
-			var fallback: Label = Label.new()
-			fallback.text = "%s (tipo no soportado: %s)" % [String(entry.get("label", option_id)), option_type]
-			row.add_child(fallback)
+			return
+	widget.focus_mode = Control.FOCUS_ALL
+	_widgets_by_id[option_id] = widget
+	if _first_option == null:
+		_first_option = widget
 	var hint_text: String = String(entry.get("hint", ""))
 	if not hint_text.is_empty():
-		var hint: Label = Label.new()
-		hint.text = hint_text
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		hint.add_theme_font_size_override("font_size", 12)
-		hint.modulate = Color(0.75, 0.75, 0.75, 1)
-		row.add_child(hint)
+		row.add_child(UiKit.wrapped_label(hint_text, &"HintLabel"))
 	_options_vbox.add_child(row)
 
 
-func _add_float_option(row: VBoxContainer, entry: Dictionary, option_id: String) -> void:
-	var header: HBoxContainer = HBoxContainer.new()
-	header.add_theme_constant_override("separation", 12)
-	var name_label: Label = Label.new()
-	name_label.text = String(entry.get("label", option_id))
+func _add_slider_row(row: VBoxContainer, entry: Dictionary, option_id: String) -> HSlider:
+	var header: HBoxContainer = UiKit.hbox(12)
+	var name_label: Label = UiKit.label(String(entry.get("label", option_id)))
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	NesUiTheme.style_caption(name_label)
 	header.add_child(name_label)
-	var value_label: Label = Label.new()
-	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	value_label.custom_minimum_size = Vector2(56, 0)
-	NesUiTheme.style_caption(value_label)
+	var value_label: Label = UiKit.label("", &"SectionLabel", HORIZONTAL_ALIGNMENT_RIGHT)
+	value_label.custom_minimum_size.x = 64.0
 	header.add_child(value_label)
 	row.add_child(header)
 	var slider: HSlider = HSlider.new()
 	slider.min_value = float(entry.get("min", 0.0))
 	slider.max_value = float(entry.get("max", 1.0))
 	slider.step = float(entry.get("step", 0.05))
-	slider.custom_minimum_size = Vector2(280, 24)
+	slider.custom_minimum_size = Vector2(0, 28)
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var stored: Variant = GameSettings.get_option_value(option_id)
-	var initial: float = float(entry.get("default", slider.min_value))
-	if stored != null:
-		initial = float(stored)
-	slider.set_block_signals(true)
-	slider.value = initial
-	slider.set_block_signals(false)
-	slider.value_changed.connect(_on_float_changed.bind(option_id))
 	slider.set_meta("value_label", value_label)
+	slider.value_changed.connect(
+		func(value: float) -> void:
+			GameSettings.set_option_value(option_id, value)
+			_refresh_slider_label(slider)
+	)
 	row.add_child(slider)
-	_widgets_by_id[option_id] = slider
-	_refresh_float_label(slider, initial)
+	return slider
+
+
+func _refresh_slider_label(slider: HSlider) -> void:
+	var value_label: Label = slider.get_meta("value_label") as Label
+	value_label.text = "%d%%" % int(roundf(slider.value * 100.0))
+
+
+func _sync_widget(option_id: String) -> void:
+	var widget: Control = _widgets_by_id.get(option_id) as Control
+	var value: Variant = GameSettings.get_option_value(option_id)
+	if widget is CheckButton:
+		(widget as CheckButton).set_pressed_no_signal(bool(value))
+	elif widget is HSlider:
+		var slider: HSlider = widget as HSlider
+		slider.set_value_no_signal(float(value))
+		_refresh_slider_label(slider)
 
 
 func _sync_widgets_from_settings() -> void:
 	for option_id: Variant in _widgets_by_id.keys():
-		var widget: Control = _widgets_by_id[option_id] as Control
-		var value: Variant = GameSettings.get_option_value(String(option_id))
-		if widget is CheckBox:
-			var checkbox: CheckBox = widget as CheckBox
-			checkbox.set_block_signals(true)
-			checkbox.button_pressed = bool(value)
-			checkbox.set_block_signals(false)
-		elif widget is HSlider:
-			var slider: HSlider = widget as HSlider
-			slider.set_block_signals(true)
-			slider.value = float(value)
-			slider.set_block_signals(false)
-			_refresh_float_label(slider, float(value))
-
-
-func _on_bool_toggled(pressed: bool, option_id: String) -> void:
-	GameSettings.set_option_value(option_id, pressed)
-
-
-func _on_float_changed(value: float, option_id: String) -> void:
-	GameSettings.set_option_value(option_id, value)
-	var widget: Control = _widgets_by_id.get(option_id) as Control
-	if widget is HSlider:
-		_refresh_float_label(widget as HSlider, value)
-
-
-func _refresh_float_label(slider: HSlider, value: float) -> void:
-	var value_label: Label = slider.get_meta("value_label") as Label
-	if value_label == null:
-		return
-	value_label.text = "%d%%" % int(roundf(value * 100.0))
+		_sync_widget(String(option_id))
 
 
 func _on_setting_changed(option_id: String, _value: Variant) -> void:
-	if not _widgets_by_id.has(option_id):
-		return
-	var widget: Control = _widgets_by_id[option_id] as Control
-	if widget is CheckBox:
-		var checkbox: CheckBox = widget as CheckBox
-		checkbox.set_block_signals(true)
-		checkbox.button_pressed = bool(GameSettings.get_option_value(option_id))
-		checkbox.set_block_signals(false)
-	elif widget is HSlider:
-		var slider: HSlider = widget as HSlider
-		var stored: float = float(GameSettings.get_option_value(option_id))
-		slider.set_block_signals(true)
-		slider.value = stored
-		slider.set_block_signals(false)
-		_refresh_float_label(slider, stored)
+	if _widgets_by_id.has(option_id):
+		_sync_widget(option_id)

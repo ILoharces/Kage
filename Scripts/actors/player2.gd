@@ -17,10 +17,8 @@ func _get_fire_action() -> String:
 	return "p2_fire_weapon"
 
 
-func _compute_input_vector() -> Vector2:
-	if not is_alive or input_blocked or not GameState.running or GameState.map_overlay_open:
-		return Vector2.ZERO
-	return Input.get_vector("p2_move_left", "p2_move_right", "p2_move_up", "p2_move_down", 0.16)
+func _get_move_actions() -> PackedStringArray:
+	return PackedStringArray(["p2_move_left", "p2_move_right", "p2_move_up", "p2_move_down"])
 
 
 func _get_interact_action() -> String:

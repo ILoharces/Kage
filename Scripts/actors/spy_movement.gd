@@ -60,7 +60,7 @@ func physics_process(delta: float) -> void:
 		host.velocity = Vector2.ZERO
 		if host.stun_timer <= 0.0:
 			host.stunned_changed.emit(false)
-	elif host.is_searching() or host.orbital_targeting:
+	elif host.orbital_targeting:
 		host.modulate = Color(host.alive_modulate.r, host.alive_modulate.g, host.alive_modulate.b, 0.75)
 		host.velocity = Vector2.ZERO
 	else:
@@ -158,7 +158,7 @@ func _begin_spring_slide() -> void:
 		return
 	var door: Door = room.get_door_for_direction(_spring_exit)
 	if door != null and door.is_closed():
-		door.try_open_for_spy(host.spy_id, true)
+		door.try_open_for_spy(host)
 	_spring_goal = room.get_door_world_pos(_spring_exit)
 	_spring_phase = SpringPhase.TO_DOOR
 
@@ -215,8 +215,7 @@ func _finalize_passage_entry_block(room: Room, entry_dir: String) -> void:
 	await host.get_tree().physics_frame
 	if not is_instance_valid(room) or host.current_room != room:
 		return
-	var area: Area2D = room.get_node_or_null("Passage_%s" % entry_dir) as Area2D
-	if area != null and area.overlaps_body(host):
+	if room.spy_overlaps_exit(host, entry_dir):
 		return
 	clear_passage_entry_block(room, entry_dir)
 
@@ -261,11 +260,14 @@ func _recover_current_room_from_position() -> void:
 	host.set_current_room(found)
 
 
-func teleport_to_room(room: Room, entry_dir: String, from_room: Room = null) -> void:
+func teleport_to_room(
+	room: Room,
+	entry_dir: String,
+	from_room: Room = null,
+	spawn_override: Vector2 = Vector2.INF
+) -> void:
 	if room == null:
 		return
-	if host.is_searching():
-		host.interaction.cancel_search()
 	host.interaction.close_open_furniture()
 	var prev_room: Room = from_room if from_room != null else host.current_room
 	var prev_local: Vector2 = Vector2.ZERO
@@ -280,8 +282,9 @@ func teleport_to_room(room: Room, entry_dir: String, from_room: Room = null) -> 
 		room.spy_entered.emit(host)
 	room.set_passage_cooldown(host, Room.PASSAGE_COOLDOWN_MS)
 	arm_passage_entry_block(room, entry_dir)
-	var local_spawn: Vector2 = room.get_door_spawn(entry_dir)
-	if prev_room != null:
+	var use_override: bool = spawn_override != Vector2.INF
+	var local_spawn: Vector2 = spawn_override if use_override else room.get_door_spawn(entry_dir)
+	if not use_override and prev_room != null:
 		local_spawn = RoomPerspective.adjust_passage_entry_position(
 			prev_local,
 			prev_room.get_room_w(),
@@ -291,22 +294,26 @@ func teleport_to_room(room: Room, entry_dir: String, from_room: Room = null) -> 
 			room.get_room_w(),
 			room.get_room_h()
 		)
-	local_spawn += RoomPerspective.door_entry_inward_offset(
-		entry_dir, room.get_room_w(), room.get_room_h()
-	)
-	local_spawn = RoomPerspective.ensure_spawn_clear_of_passage(
-		local_spawn, entry_dir, room.get_room_w(), room.get_room_h()
-	)
+	if not use_override:
+		local_spawn += RoomPerspective.door_entry_inward_offset(
+			entry_dir, room.get_room_w(), room.get_room_h()
+		)
+		local_spawn = RoomPerspective.ensure_spawn_clear_of_passage(
+			local_spawn, entry_dir, room.get_room_w(), room.get_room_h()
+		)
 	local_spawn = room.clamp_local_position(local_spawn)
 	host.global_position = room.global_position + local_spawn
 	host.update_body_collider()
-	var entry_door: Door = room.get_door_for_direction(entry_dir)
-	if entry_door != null:
-		entry_door.try_open_for_spy(host.spy_id, true)
+	if not use_override:
+		var entry_door: Door = room.get_door_for_direction(entry_dir)
+		if entry_door != null:
+			entry_door.try_open_for_spy(host)
 	_finalize_passage_entry_block.call_deferred(room, entry_dir)
-	var inward: Vector2 = RoomPerspective.door_entry_inward_offset(
-		entry_dir, room.get_room_w(), room.get_room_h()
-	)
+	var inward: Vector2 = RoomPerspective.floor_centroid(room.get_room_w(), room.get_room_h()) - local_spawn
+	if not use_override:
+		inward = RoomPerspective.door_entry_inward_offset(
+			entry_dir, room.get_room_w(), room.get_room_h()
+		)
 	if inward.length_squared() > 0.001:
 		if host.velocity.length_squared() < 1.0 or host.velocity.dot(inward) <= 0.0:
 			host.velocity = inward.normalized() * SPEED
