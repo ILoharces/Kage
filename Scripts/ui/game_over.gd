@@ -25,26 +25,33 @@ func _build_ui() -> void:
 	add_child(center)
 
 	panel = PanelContainer.new()
-	panel.custom_minimum_size = Vector2(420, 220)
+	panel.custom_minimum_size = Vector2(420, 0)
+	panel.add_theme_stylebox_override("panel", NesUiTheme.padded_panel_style(22.0))
 	center.add_child(panel)
 
 	var box: VBoxContainer = VBoxContainer.new()
-	box.add_theme_constant_override("separation", 16)
+	box.add_theme_constant_override("separation", 14)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	panel.add_child(box)
 
 	label = Label.new()
-	label.add_theme_font_size_override("font_size", 30)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	NesUiTheme.style_spy_label(label)
+	label.add_theme_font_size_override("font_size", 28)
 	box.add_child(label)
 
 	subtitle = Label.new()
-	subtitle.add_theme_font_size_override("font_size", 14)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	subtitle.custom_minimum_size = Vector2(360, 0)
+	NesUiTheme.style_caption(subtitle)
+	subtitle.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT_DIM)
 	box.add_child(subtitle)
 
 	button = Button.new()
-	button.text = "Reiniciar (Enter)"
+	button.text = "Reiniciar"
+	button.custom_minimum_size = Vector2(200, 44)
+	NesUiTheme.style_action_button(button)
 	button.pressed.connect(_on_restart_pressed)
 	box.add_child(button)
 
@@ -61,7 +68,7 @@ func _build_end_copy(winner_id: int) -> Dictionary:
 	if winner_id == GameState.WINNER_TIMEOUT:
 		return {
 			"title": "TIEMPO AGOTADO",
-			"subtitle": "Nadie escapo a tiempo",
+			"subtitle": "Nadie escapó a tiempo",
 		}
 	var winner_name: String = _spy_label(winner_id)
 	var loser_id: int = _loser_id(winner_id)
@@ -70,12 +77,12 @@ func _build_end_copy(winner_id: int) -> Dictionary:
 		GameState.MatchEndReason.ESCAPE:
 			return {
 				"title": "%s GANA" % winner_name,
-				"subtitle": "Escapo con los 5 objetos",
+				"subtitle": "Escapó con todo el botín",
 			}
 		GameState.MatchEndReason.TRAP:
 			return {
 				"title": "%s GANA" % winner_name,
-				"subtitle": "%s cayo en una trampa" % loser_name,
+				"subtitle": "%s cayó en una trampa" % loser_name,
 			}
 		GameState.MatchEndReason.WEAPON:
 			var weapon_name: String = WeaponDB.get_weapon_name(GameState.elimination_weapon_id)
@@ -88,7 +95,7 @@ func _build_end_copy(winner_id: int) -> Dictionary:
 		GameState.MatchEndReason.TIMEOUT:
 			return {
 				"title": "%s GANA" % winner_name,
-				"subtitle": "%s se quedo sin tiempo" % loser_name,
+				"subtitle": "%s se quedó sin tiempo" % loser_name,
 			}
 	return _legacy_end_copy(winner_id)
 

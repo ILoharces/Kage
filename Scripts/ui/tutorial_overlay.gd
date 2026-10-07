@@ -30,9 +30,9 @@ const _STEPS: Array[Dictionary] = [
 		"title": "De que va el juego",
 		"body": (
 			"Dos espias (blanco vs negro) compiten en la misma mansion.\n\n"
-			+ "Objetivo: reunir los 5 objetos secretos. Primero necesitas el maletin; "
-			+ "luego puedes coger llave, dinero, pasaporte y microfilm. Escapa por la "
-			+ "puerta de salida con todo el botin.\n\n"
+			+ "Objetivo: reunir el maletín, la llave, el dinero y el pasaporte. "
+			+ "Sin maletín solo cabe un objeto en la mano; con él se guarda el resto. "
+			+ "Escapa por la puerta de salida con todo el botín.\n\n"
 			+ "Cada espia tiene unos 5 minutos de reloj personal. Ganas escapando o si "
 			+ "el rival se queda sin tiempo."
 		),
@@ -69,7 +69,7 @@ const _STEPS: Array[Dictionary] = [
 		"body": (
 			"Coloca trampas con Q/R y el trapulator (Tab). El mapa (M) muestra la mansion.\n\n"
 			+ "El HUD muestra inventario, tiempo y estado de cada espia.\n\n"
-			+ "La victoria es por escape con los 5 objetos o por agotar el tiempo del "
+			+ "La victoria es por escape con todo el botín o por agotar el tiempo del "
 			+ "rival, no por una sola muerte. Pulsa Entendido para ir al menu."
 		),
 	},

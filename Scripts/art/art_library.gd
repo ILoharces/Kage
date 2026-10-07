@@ -54,7 +54,7 @@ const COUNTERS: Array[Texture2D] = [
 
 
 static func spy_texture(spy_id: int) -> Texture2D:
-	if spy_id == ItemDB.SpyId.AI:
+	if spy_id == ItemDB.SpyId.PLAYER2:
 		return SPY_BLACK
 	return SPY_WHITE
 

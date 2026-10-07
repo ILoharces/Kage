@@ -67,7 +67,8 @@ func _build_ui() -> void:
 	add_child(center)
 
 	panel = PanelContainer.new()
-	panel.custom_minimum_size = Vector2(640, 420)
+	panel.custom_minimum_size = Vector2(640, 0)
+	panel.add_theme_stylebox_override("panel", NesUiTheme.padded_panel_style(18.0))
 	center.add_child(panel)
 
 	var root: VBoxContainer = VBoxContainer.new()
@@ -75,10 +76,17 @@ func _build_ui() -> void:
 	panel.add_child(root)
 
 	var title: Label = Label.new()
-	title.text = "TRAPULATOR (el reloj sigue corriendo)"
-	title.add_theme_font_size_override("font_size", 24)
+	title.text = "TRAPULATOR"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	NesUiTheme.style_spy_label(title)
+	title.add_theme_font_size_override("font_size", 22)
 	root.add_child(title)
+	var subtitle: Label = Label.new()
+	subtitle.text = "El tiempo sigue corriendo"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	NesUiTheme.style_caption(subtitle)
+	subtitle.add_theme_color_override("font_color", NesUiTheme.COLOR_TIMER_WARN)
+	root.add_child(subtitle)
 
 	var columns: HBoxContainer = HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 24)
@@ -88,8 +96,8 @@ func _build_ui() -> void:
 	trap_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(trap_col)
 	var trap_title: Label = Label.new()
-	trap_title.text = "Trampas (clic o Enter)"
-	trap_title.add_theme_font_size_override("font_size", 18)
+	trap_title.text = "Trampas"
+	NesUiTheme.style_spy_label(trap_title)
 	trap_col.add_child(trap_title)
 	for trap_index: int in trap_ids.size():
 		var trap_id: int = trap_ids[trap_index]
@@ -111,13 +119,15 @@ func _build_ui() -> void:
 		swatch.color = ItemDB.TRAP_COLORS.get(trap_id, Color.WHITE)
 		inner.add_child(swatch)
 		var name_label: Label = Label.new()
-		name_label.text = " " + String(ItemDB.TRAP_NAMES.get(trap_id, "?"))
+		name_label.text = String(ItemDB.TRAP_NAMES.get(trap_id, "?"))
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		NesUiTheme.style_caption(name_label)
 		inner.add_child(name_label)
 		var count_label: Label = Label.new()
 		count_label.text = "x0"
 		count_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		NesUiTheme.style_caption(count_label)
 		inner.add_child(count_label)
 		trap_col.add_child(row)
 		trap_rows.append(row)
@@ -131,7 +141,7 @@ func _build_ui() -> void:
 	columns.add_child(counter_col)
 	var counter_title: Label = Label.new()
 	counter_title.text = "Contramedidas"
-	counter_title.add_theme_font_size_override("font_size", 18)
+	NesUiTheme.style_spy_label(counter_title)
 	counter_col.add_child(counter_title)
 	for counter_id: int in counter_ids:
 		var row: HBoxContainer = HBoxContainer.new()
@@ -139,18 +149,23 @@ func _build_ui() -> void:
 		var name_label: Label = Label.new()
 		name_label.text = String(ItemDB.COUNTER_NAMES.get(counter_id, "?"))
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		NesUiTheme.style_caption(name_label)
 		row.add_child(name_label)
 		var count_label: Label = Label.new()
 		count_label.text = "x0"
+		NesUiTheme.style_caption(count_label)
 		row.add_child(count_label)
 		counter_col.add_child(row)
 		counter_count_labels.append(count_label)
 
 	hint_label = Label.new()
-	hint_label.text = "Tab: cerrar  |  Arriba/Abajo: elegir  |  Enter: equipar  |  Q: colocar"
+	hint_label.text = ""
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint_label.add_theme_font_size_override("font_size", 14)
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	NesUiTheme.style_caption(hint_label)
+	hint_label.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT_DIM)
 	root.add_child(hint_label)
+	_refresh_highlight()
 
 
 func toggle() -> void:
@@ -258,19 +273,42 @@ func _sync_selected_index_to_held() -> void:
 		selected_trap_index = idx
 
 
+func _active_player_index() -> int:
+	if _active_player != null and player2 != null and _active_player == player2:
+		return 1
+	return 0
+
+
+func _trap_row_style(equipped: bool, selected: bool) -> StyleBoxFlat:
+	var box: StyleBoxFlat = StyleBoxFlat.new()
+	box.border_width_left = 2
+	box.border_width_top = 2
+	box.border_width_right = 2
+	box.border_width_bottom = 2
+	if equipped:
+		box.bg_color = Color("#3a3010")
+		box.border_color = NesUiTheme.COLOR_TIMER_WARN
+	elif selected:
+		box.bg_color = Color("#142414")
+		box.border_color = Color("#43a047")
+	else:
+		box.bg_color = NesUiTheme.COLOR_TOGGLE_UNSELECTED
+		box.border_color = NesUiTheme.COLOR_BORDER_DARK
+	return box
+
+
 func _refresh_highlight() -> void:
 	var owner: Player = _owner_player()
 	var held_trap_id: int = -1
 	if owner != null and owner.held != null and owner.held.is_holding_trap():
 		held_trap_id = owner.held.get_trap_id()
 	for i: int in trap_rows.size():
-		var row: Control = trap_rows[i]
-		if trap_ids[i] == held_trap_id:
-			row.modulate = Color(1.0, 1.0, 0.55)
-		elif i == selected_trap_index:
-			row.modulate = Color(0.85, 1.0, 0.85)
-		else:
-			row.modulate = Color.WHITE
+		var row: PanelContainer = trap_rows[i] as PanelContainer
+		if row == null:
+			continue
+		row.modulate = Color.WHITE
+		var equipped: bool = trap_ids[i] == held_trap_id
+		row.add_theme_stylebox_override("panel", _trap_row_style(equipped, i == selected_trap_index))
 	_refresh_hint()
 
 
@@ -280,13 +318,17 @@ func _refresh_hint() -> void:
 	var owner: Player = _owner_player()
 	if owner == null:
 		return
+	var player_index: int = _active_player_index()
+	var close_key: String = InputBindings.get_binding_short_label(player_index, "trapulator")
+	var place_key: String = InputBindings.get_binding_short_label(player_index, "place_trap")
+	var interact_key: String = InputBindings.get_binding_short_label(player_index, "interact")
 	if owner.held != null and owner.held.is_holding_carried():
 		hint_label.text = (
-			"Equipar trampa suelta lo que llevas en las manos (recoge con E). "
-			+ "Tab: cerrar  |  Enter: equipar"
+			"Equipar una trampa suelta lo que llevas. Recógelo con %s. Cerrar: %s · Equipar: Enter"
+			% [interact_key, close_key]
 		)
 	else:
-		hint_label.text = "Tab: cerrar  |  Arriba/Abajo: elegir  |  Enter: equipar  |  Q: colocar"
+		hint_label.text = "Cerrar: %s · Elegir: arriba/abajo · Equipar: Enter · Colocar: %s" % [close_key, place_key]
 
 
 func _refresh_counts() -> void:

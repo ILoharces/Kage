@@ -88,7 +88,6 @@ func mark_exit_door(layout: LevelLayout) -> void:
 
 func spawn_world_content() -> void:
 	_spawn_furniture_and_items()
-	_scatter_items_on_floor()
 
 
 func spawn_actors(layout: LevelLayout) -> void:
@@ -182,24 +181,6 @@ func _spawn_furniture_and_items() -> void:
 		if i < pool.size():
 			pool[i].hide_item(items[i])
 	_spawn_weapon_boxes(mansion.rooms)
-
-
-func _scatter_items_on_floor() -> void:
-	var items: Array[int] = ItemDB.get_all_items()
-	var pool_rooms: Array[Room] = []
-	pool_rooms.assign(mansion.rooms)
-	pool_rooms.shuffle()
-	for i: int in items.size():
-		if i >= pool_rooms.size():
-			break
-		var room: Room = pool_rooms[i]
-		var dropped: DroppedItem = DroppedItem.new()
-		dropped.item_id = items[i]
-		dropped.position = RoomPerspective.floor_uv_to_pos(
-			0.5, 0.55, room.get_room_w(), room.get_room_h()
-		)
-		room.add_child(dropped)
-	_spawn_weapon_boxes(pool_rooms)
 
 
 func _spawn_weapon_boxes(pool_rooms: Array[Room]) -> void:

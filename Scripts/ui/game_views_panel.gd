@@ -5,7 +5,7 @@ extends Control
 
 const VIEW_BORDER_PX: float = 2.0
 const VIEW_BORDER_COLOR: Color = Color("#000000")
-const DEATH_OVERLAY_COLOR: Color = Color("#707070", 0.95)
+const DEATH_OVERLAY_COLOR: Color = Color(0.0, 0.0, 0.0, 0.62)
 const DEATH_OVERLAY_Z: int = 70
 
 signal views_resized
@@ -58,6 +58,8 @@ func _draw() -> void:
 		if rect.size.x <= 0.0 or rect.size.y <= 0.0:
 			continue
 		draw_rect(rect, VIEW_BORDER_COLOR, false, VIEW_BORDER_PX)
+	_draw_name_badge(_player_label)
+	_draw_name_badge(_ai_label)
 
 
 func _on_panel_resized() -> void:
@@ -88,10 +90,36 @@ func _update_label_positions() -> void:
 	var pad: float = 8.0
 	if player_view != null:
 		var player_rect: Rect2 = _local_rect_for(player_view)
-		_player_label.position = player_rect.position + Vector2(VIEW_BORDER_PX + pad, VIEW_BORDER_PX + 6.0)
+		_player_label.position = player_rect.position + Vector2(VIEW_BORDER_PX + pad, VIEW_BORDER_PX + 10.0)
+		_fit_name_label(_player_label)
 	if ai_view != null:
 		var ai_rect: Rect2 = _local_rect_for(ai_view)
-		_ai_label.position = ai_rect.position + Vector2(VIEW_BORDER_PX + pad, VIEW_BORDER_PX + 6.0)
+		_ai_label.position = ai_rect.position + Vector2(VIEW_BORDER_PX + pad, VIEW_BORDER_PX + 10.0)
+		_fit_name_label(_ai_label)
+	queue_redraw()
+
+
+func _fit_name_label(label: Label) -> void:
+	if label == null:
+		return
+	var text_size: Vector2 = label.get_minimum_size()
+	if text_size.x < 4.0:
+		return
+	label.size = text_size
+
+
+func _draw_name_badge(label: Label) -> void:
+	if label == null or not label.visible:
+		return
+	var text_size: Vector2 = label.size
+	if text_size.x < 4.0:
+		text_size = label.get_minimum_size()
+	if text_size.x < 4.0:
+		return
+	var pad: Vector2 = Vector2(8.0, 4.0)
+	var rect: Rect2 = Rect2(label.position - pad, text_size + pad * 2.0)
+	draw_rect(rect, Color(0.0, 0.0, 0.0, 0.78), true)
+	draw_rect(rect, NesUiTheme.COLOR_BORDER, false, 2.0)
 
 
 func _local_rect_for(control: Control) -> Rect2:
@@ -375,12 +403,17 @@ func _ensure_death_overlay(spy_id: int) -> Control:
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(center)
+	var card: PanelContainer = PanelContainer.new()
+	card.custom_minimum_size = Vector2(220, 0)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_theme_stylebox_override("panel", NesUiTheme.padded_panel_style(18.0))
+	center.add_child(card)
 	var vbox: VBoxContainer = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 4)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	center.add_child(vbox)
+	card.add_child(vbox)
 	var title: Label = Label.new()
-	title.text = "Be right back"
+	title.text = "VUELVES EN"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", NesUiTheme.FONT_SPY + 4)
 	title.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT)
@@ -412,7 +445,7 @@ func update_death_countdown(spy_id: int, remaining: float) -> void:
 	var countdown: Label = _death_overlays[spy_id].get("countdown") as Label
 	if countdown == null:
 		return
-	countdown.text = "%.2f" % maxf(0.0, remaining)
+	countdown.text = "%d" % int(ceil(maxf(0.0, remaining)))
 
 
 func hide_death_overlay(spy_id: int) -> void:

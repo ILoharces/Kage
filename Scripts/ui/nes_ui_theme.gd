@@ -7,6 +7,7 @@ const COLOR_BG: Color = Color("#000000")
 const COLOR_BORDER: Color = Color("#d4d4d4")
 const COLOR_BORDER_DARK: Color = Color("#707070")
 const COLOR_TEXT: Color = Color("#f0f0f0")
+const COLOR_TEXT_DIM: Color = Color("#8a8a8a")
 const COLOR_SLOT_EMPTY: Color = Color("#1a1a1a")
 const COLOR_TOGGLE_SELECTED: Color = Color("#606060")
 const COLOR_TOGGLE_UNSELECTED: Color = Color("#080808")
@@ -109,8 +110,56 @@ static func _on_toggle_button_focus(button: Button) -> void:
 	_apply_toggle_button_styles(button)
 
 
+static func padded_panel_style(pad: float = 16.0) -> StyleBoxFlat:
+	var box: StyleBoxFlat = panel_style()
+	box.content_margin_left = pad
+	box.content_margin_top = pad
+	box.content_margin_right = pad
+	box.content_margin_bottom = pad
+	return box
+
+
+static func inset_panel_style() -> StyleBoxFlat:
+	var box: StyleBoxFlat = panel_style(COLOR_SLOT_EMPTY, COLOR_BORDER_DARK, 0)
+	box.border_width_left = 2
+	box.border_width_top = 2
+	box.border_width_right = 2
+	box.border_width_bottom = 2
+	return box
+
+
 static func inventory_box_style() -> StyleBoxFlat:
 	return panel_style(COLOR_BG, COLOR_BORDER, 10)
+
+
+static func style_action_button(button: Button) -> void:
+	button.add_theme_stylebox_override("normal", _action_button_style(COLOR_TOGGLE_UNSELECTED, COLOR_BORDER_DARK))
+	button.add_theme_stylebox_override("hover", _action_button_style(COLOR_SLOT_EMPTY, COLOR_BORDER))
+	button.add_theme_stylebox_override("pressed", _action_button_style(COLOR_TOGGLE_SELECTED, COLOR_BORDER))
+	button.add_theme_stylebox_override("focus", _action_button_style(COLOR_SLOT_EMPTY, COLOR_TEXT))
+	button.add_theme_stylebox_override("disabled", _action_button_style(COLOR_TOGGLE_UNSELECTED, COLOR_BORDER_DARK))
+	button.add_theme_color_override("font_color", COLOR_TEXT)
+	button.add_theme_color_override("font_hover_color", COLOR_TEXT)
+	button.add_theme_color_override("font_pressed_color", COLOR_TEXT)
+	button.add_theme_color_override("font_focus_color", COLOR_TEXT)
+	button.add_theme_color_override("font_disabled_color", COLOR_TEXT_DIM)
+	button.add_theme_font_override("font", ui_font())
+	button.add_theme_font_size_override("font_size", FONT_LABEL)
+
+
+static func _action_button_style(bg: Color, border: Color) -> StyleBoxFlat:
+	var box: StyleBoxFlat = StyleBoxFlat.new()
+	box.bg_color = bg
+	box.border_color = border
+	box.border_width_left = 2
+	box.border_width_top = 2
+	box.border_width_right = 2
+	box.border_width_bottom = 2
+	box.content_margin_left = 10.0
+	box.content_margin_top = 6.0
+	box.content_margin_right = 10.0
+	box.content_margin_bottom = 6.0
+	return box
 
 
 static func style_caption(label: Label) -> void:

@@ -9,7 +9,7 @@ enum CounterId { WIRE_CUTTERS }
 enum FurnitureKind { PAINTING, BOOKSHELF, ARMCHAIR, DRAWERS, PLANT, LAMP, CLOCK, TABLE, WEAPON_BOX }
 enum SpyId { PLAYER1, PLAYER2 }
 
-const ITEM_COUNT: int = 5
+const ITEM_COUNT: int = 4
 const TRAP_COUNT: int = 5
 
 # Reservado (la inspeccion de muebles es instantanea al pulsar interactuar).

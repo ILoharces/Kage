@@ -41,6 +41,22 @@ func setup_map_overlay() -> void:
 	main._map_panel.name = "Minimap"
 	main._map_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main._map_overlay.add_child(main._map_panel)
+	var map_title: Label = Label.new()
+	map_title.name = "MapTitle"
+	map_title.text = "MAPA"
+	map_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	map_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	NesUiTheme.style_spy_label(map_title)
+	map_title.add_theme_font_size_override("font_size", 20)
+	main._map_overlay.add_child(map_title)
+	var map_legend: Label = Label.new()
+	map_legend.name = "MapLegend"
+	map_legend.text = "Sala gris    ·    Puerta roja    ·    Salida verde    ·    Espía en su casilla"
+	map_legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	map_legend.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	NesUiTheme.style_caption(map_legend)
+	map_legend.add_theme_color_override("font_color", NesUiTheme.COLOR_BORDER)
+	main._map_overlay.add_child(map_legend)
 
 
 func apply_layout() -> void:
@@ -84,12 +100,23 @@ func apply_map_overlay_layout(metrics: LayoutMetrics = null) -> void:
 	main._map_overlay.size = Vector2(metrics.views_outer_width, metrics.screen_size.y)
 	if main._map_panel != null:
 		var inset: float = MAP_OVERLAY_PAD
-		var available: Vector2 = main._map_overlay.size - Vector2(inset * 2.0, inset * 2.0)
+		var title_h: float = 32.0
+		var legend_h: float = 28.0
+		var available: Vector2 = main._map_overlay.size - Vector2(inset * 2.0, inset * 2.0 + title_h + legend_h)
 		var square_side: float = minf(available.x, available.y)
-		var map_pos: Vector2 = Vector2(inset, inset) + (available - Vector2(square_side, square_side)) * 0.5
+		var map_pos: Vector2 = Vector2(inset, inset + title_h)
+		map_pos += Vector2((available.x - square_side) * 0.5, maxf(available.y - square_side, 0.0) * 0.5)
 		main._map_panel.position = map_pos
 		main._map_panel.size = Vector2(square_side, square_side)
 		main._map_panel.custom_minimum_size = main._map_panel.size
+		var map_title: Label = main._map_overlay.get_node_or_null("MapTitle") as Label
+		if map_title != null:
+			map_title.position = Vector2(0.0, 10.0)
+			map_title.size = Vector2(main._map_overlay.size.x, title_h)
+		var map_legend: Label = main._map_overlay.get_node_or_null("MapLegend") as Label
+		if map_legend != null:
+			map_legend.position = Vector2(16.0, map_pos.y + square_side + 8.0)
+			map_legend.size = Vector2(main._map_overlay.size.x - 32.0, legend_h)
 	main.game_root.move_child(main._map_overlay, main.game_root.get_child_count() - 1)
 
 

@@ -20,6 +20,16 @@ func _ready() -> void:
 	_overlay.color = OVERLAY_COLOR
 	var center: Control = %Center as Control
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var panel: PanelContainer = $Center/Panel as PanelContainer
+	if panel != null:
+		panel.add_theme_stylebox_override("panel", NesUiTheme.padded_panel_style(22.0))
+	var title: Label = $Center/Panel/VBox/Title as Label
+	if title != null:
+		title.text = "PAUSA"
+		NesUiTheme.style_spy_label(title)
+		title.add_theme_font_size_override("font_size", 26)
+	NesUiTheme.style_action_button(_resume_button)
+	NesUiTheme.style_action_button(_exit_button)
 	_resume_button.pressed.connect(func() -> void: resume_pressed.emit())
 	_exit_button.pressed.connect(func() -> void: exit_pressed.emit())
 

@@ -39,7 +39,6 @@ const ITEM_GROUND: Dictionary = {
 	ItemDB.ItemId.KEY: Vector2(16, 12),
 	ItemDB.ItemId.MONEY: Vector2(22, 14),
 	ItemDB.ItemId.PASSPORT: Vector2(16, 22),
-	ItemDB.ItemId.MICROFILM: Vector2(14, 14),
 }
 
 const WEAPON_GROUND: Vector2 = Vector2(30, 14)
@@ -102,17 +101,11 @@ static func held_ratio(held: HeldInventory) -> Vector2:
 				return Vector2(0.42, 0.26)
 			ItemDB.ItemId.PASSPORT:
 				return Vector2(0.34, 0.4)
-			ItemDB.ItemId.MICROFILM:
-				return Vector2(0.26, 0.22)
 			_:
 				return Vector2(0.5, 0.36)
 	if held.kind == HeldInventory.Kind.TRAP:
-		if held.held_id == ItemDB.TrapId.WATER_BUCKET:
-			return Vector2(0.46, 0.52)
 		return Vector2(0.5, 0.4)
 	if held.kind == HeldInventory.Kind.COUNTER:
-		if held.held_id == ItemDB.CounterId.UMBRELLA:
-			return Vector2(0.28, 0.62)
 		return Vector2(0.4, 0.34)
 	return Vector2(0.5, 0.36)
 

@@ -4,7 +4,7 @@ extends PanelContainer
 # Columna central de la partida: botón y acción según el modo de cada jugador.
 
 const ROW_FONT: int = 13
-const CHIP_MIN_WIDTH: float = 96.0
+const CHIP_MIN_WIDTH: float = 72.0
 
 var _scroll: ScrollContainer = null
 var _list: VBoxContainer = null
@@ -55,17 +55,46 @@ func refresh() -> void:
 	if not GameState.use_ai:
 		players.append(1)
 	for player_index: int in players:
+		if player_index > 0:
+			_list.add_child(_make_separator())
 		if players.size() > 1:
 			var who: String = "BLANCO" if player_index <= 0 else "NEGRO"
-			var heading: Label = _make_label(who, NesUiTheme.FONT_LABEL)
-			heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			_list.add_child(heading)
+			var who_label: Label = _make_label(who, NesUiTheme.FONT_LABEL)
+			who_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_list.add_child(who_label)
 		var mode: Label = _make_label(_mode_title(player_index), NesUiTheme.FONT_LABEL)
 		mode.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		mode.add_theme_color_override("font_color", NesUiTheme.COLOR_BORDER)
 		_list.add_child(mode)
+		var section: String = ""
 		for row: Dictionary in InputBindings.get_controls_guide(player_index):
-			_list.add_child(_make_row(String(row.get("button", "")), String(row.get("action", ""))))
+			var action_text: String = String(row.get("action", ""))
+			var next_section: String = _section_for(action_text)
+			if next_section != section:
+				section = next_section
+				var section_label: Label = _make_label(section, NesUiTheme.FONT_LABEL)
+				section_label.add_theme_color_override("font_color", NesUiTheme.COLOR_TEXT_DIM)
+				_list.add_child(section_label)
+			_list.add_child(_make_row(String(row.get("button", "")), action_text))
+
+
+func _section_for(action_text: String) -> String:
+	match action_text:
+		"Mover", "Apuntar":
+			return "Movimiento"
+		"Disparar", "Modo mirilla":
+			return "Combate"
+		_:
+			return "Partida"
+
+
+func _make_separator() -> ColorRect:
+	var line: ColorRect = ColorRect.new()
+	line.custom_minimum_size = Vector2(0, 1)
+	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.color = NesUiTheme.COLOR_BORDER_DARK
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return line
 
 
 func _mode_title(player_index: int) -> String:

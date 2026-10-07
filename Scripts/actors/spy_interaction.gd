@@ -159,8 +159,9 @@ func _resolve_furniture_interaction(furn: Furniture) -> void:
 	var result: Dictionary = furn.interact(host)
 	if int(result["item_found"]) != -1:
 		var item_id: int = int(result["item_found"])
-		var added: bool = GameState.add_item(host.spy_id, item_id)
-		if added:
+		if GameState.owns_item(host.spy_id, item_id):
+			pass
+		elif GameState.collect_item(host, item_id):
 			_on_item_added_to_inventory()
 		elif item_id != ItemDB.ItemId.SUITCASE:
 			drop_item_in_room(item_id)

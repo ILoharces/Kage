@@ -2,13 +2,16 @@ extends Node
 
 # Singleton con el estado global de la partida.
 # - Reloj individual por espia (no se congela en menus ni muertes).
-# - El maletin es prerequisito: sin el no se pueden recoger los otros 4 items.
+# - Sin maletín solo cabe un objeto en la mano. Con maletín se guarda el botín.
+# - Para escapar hacen falta el maletín, la llave, el dinero y el pasaporte.
 
 signal time_changed(spy_id: int, value: float)
 signal inventory_changed(spy_id: int)
 signal traps_changed(spy_id: int)
 signal game_over(winner_id: int)
 signal exit_reached(spy_id: int)
+signal item_blocked_no_suitcase(spy_id: int)
+signal map_overlay_close_requested
 signal suitcase_dropped(spy_id: int)
 signal suitcase_recovered(spy_id: int)
 signal suitcase_stolen(thief_id: int, victim_id: int)
@@ -431,12 +434,15 @@ func try_pickup_ground(spy: SpyBase, node: Node) -> bool:
 		var dropped_item: DroppedItem = node as DroppedItem
 		if dropped_item == null or dropped_item.item_id < 0:
 			return false
-		if not add_item(spy.spy_id, dropped_item.item_id):
+		if owns_item(spy.spy_id, dropped_item.item_id):
+			dropped_item.queue_free()
+			return true
+		if not collect_item(spy, dropped_item.item_id):
 			return false
 		dropped_item.queue_free()
 		if spy.held != null and spy.held.is_holding_weapon():
 			drop_weapon_from_hands(spy)
-		inventory_changed.emit(spy.spy_id)
+			_sync_carried_hands(spy)
 		return true
 	if node.is_in_group("dropped_suitcase"):
 		return try_pickup_dropped_suitcase(spy, node as Area2D)
@@ -454,13 +460,17 @@ func try_pickup_dropped_suitcase(spy: SpyBase, dropped: Area2D) -> bool:
 	_dropped_suitcases.erase(owner_id)
 	if picker_id == owner_id:
 		_restore_items_to_spy(picker_id, stored)
-		suitcase_recovered.emit(picker_id)
 	else:
 		_steal_items_from_suitcase(picker_id, stored)
-		suitcase_stolen.emit(picker_id, owner_id)
-		inventory_changed.emit(owner_id)
 	if spy.held != null and spy.held.is_holding_weapon():
 		drop_weapon_from_hands(spy)
+	_sync_carried_hands(spy)
+	inventory_changed.emit(picker_id)
+	if picker_id == owner_id:
+		suitcase_recovered.emit(picker_id)
+	else:
+		suitcase_stolen.emit(picker_id, owner_id)
+		inventory_changed.emit(owner_id)
 	dropped.queue_free()
 	return true
 
@@ -471,7 +481,6 @@ func _restore_items_to_spy(spy_id: int, stored: Array[int]) -> void:
 		if not inv.has(item_id):
 			inv.append(item_id)
 	items_by_spy[spy_id] = inv
-	inventory_changed.emit(spy_id)
 
 
 func _steal_items_from_suitcase(thief_id: int, stored: Array[int]) -> void:
@@ -480,7 +489,6 @@ func _steal_items_from_suitcase(thief_id: int, stored: Array[int]) -> void:
 		if not inv.has(item_id):
 			inv.append(item_id)
 	items_by_spy[thief_id] = inv
-	inventory_changed.emit(thief_id)
 
 
 func _clear_all_dropped_suitcases() -> void:
@@ -502,6 +510,11 @@ func remove_item(spy_id: int, item_id: int) -> bool:
 	return true
 
 
+func owns_item(spy_id: int, item_id: int) -> bool:
+	var inv: Array = items_by_spy.get(spy_id, []) as Array
+	return inv.has(item_id)
+
+
 func add_item(spy_id: int, item_id: int) -> bool:
 	var inv: Array = items_by_spy[spy_id] as Array
 	if inv.has(item_id):
@@ -509,6 +522,42 @@ func add_item(spy_id: int, item_id: int) -> bool:
 	inv.append(item_id)
 	inventory_changed.emit(spy_id)
 	return true
+
+
+# Sin maletín solo cabe un objeto en la mano: el anterior cae al suelo.
+# Con maletín, o al recoger el propio maletín, el botín se guarda dentro.
+func collect_item(spy: SpyBase, item_id: int) -> bool:
+	if spy == null or spy.current_room == null or item_id < 0:
+		return false
+	var spy_id: int = spy.spy_id
+	var inv: Array = items_by_spy.get(spy_id, []) as Array
+	if inv.has(item_id):
+		return false
+	var stores_loot: bool = has_suitcase(spy_id) or item_id == ItemDB.ItemId.SUITCASE
+	if not stores_loot:
+		var previous: Array[int] = []
+		for raw_id: Variant in inv:
+			previous.append(int(raw_id))
+		for old_id: int in previous:
+			if remove_item(spy_id, old_id):
+				spawn_dropped_item(spy.current_room, spy.global_position, old_id)
+	inv = items_by_spy.get(spy_id, []) as Array
+	if inv.has(item_id):
+		return false
+	inv.append(item_id)
+	items_by_spy[spy_id] = inv
+	_sync_carried_hands(spy)
+	inventory_changed.emit(spy_id)
+	return true
+
+
+func _sync_carried_hands(spy: SpyBase) -> void:
+	if spy == null or spy.held == null:
+		return
+	if spy.held.is_holding_weapon() or spy.held.is_holding_trap():
+		return
+	if spy.held.sync_carried_from_inventory(spy.spy_id):
+		spy.emit_held_changed()
 
 
 func remove_random_item(spy_id: int) -> int:
@@ -523,8 +572,11 @@ func remove_random_item(spy_id: int) -> int:
 
 
 func has_all_items(spy_id: int) -> bool:
-	var inv: Array = items_by_spy[spy_id] as Array
-	return inv.size() >= ItemDB.ITEM_COUNT
+	var inv: Array = items_by_spy.get(spy_id, []) as Array
+	for item_id: int in ItemDB.get_all_items():
+		if not inv.has(item_id):
+			return false
+	return true
 
 
 func get_items(spy_id: int) -> Array:
