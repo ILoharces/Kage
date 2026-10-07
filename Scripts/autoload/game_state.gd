@@ -26,6 +26,7 @@ const WINNER_TIMEOUT: int = -2
 const PLACEHOLDER_PISTOL_ID: StringName = &"placeholder_pistol"
 const MACHINE_GUN_ID: StringName = &"machine_gun"
 const ORBITAL_CANNON_ID: StringName = &"orbital_cannon"
+const BAZOOKA_ID: StringName = &"bazooka"
 const DEFAULT_MATCH_CONFIG: MatchConfig = preload("res://resources/match_config.tres")
 const SPY_IDS: Array[int] = [ItemDB.SpyId.PLAYER1, ItemDB.SpyId.PLAYER2]
 

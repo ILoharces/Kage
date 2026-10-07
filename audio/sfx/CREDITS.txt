@@ -5,4 +5,6 @@ machinegun_shot.ogg — laserSmall_000.ogg, Sci-Fi Sounds, Kenney. CC0.
 orbital_arm.ogg — confirmation_002.ogg, Interface Sounds, Kenney. CC0.
 orbital_beam.ogg — laserLarge_000.ogg, Sci-Fi Sounds, Kenney. CC0.
 orbital_impact.ogg — lowFrequency_explosion_000.ogg, Sci-Fi Sounds, Kenney. CC0.
+bazooka_shot.ogg — thrusterFire_000.ogg, Sci-Fi Sounds, Kenney. CC0.
+bazooka_impact.ogg — explosionCrunch_003.ogg, Sci-Fi Sounds, Kenney. CC0.
 Origen: https://opengameart.org/content/interface-sounds y https://opengameart.org/content/sci-fi-sounds

@@ -10,6 +10,8 @@ const _MACHINE_GUN: AudioStream = preload("res://audio/sfx/machinegun_shot.ogg")
 const _ORBITAL_ARM: AudioStream = preload("res://audio/sfx/orbital_arm.ogg")
 const _ORBITAL_BEAM: AudioStream = preload("res://audio/sfx/orbital_beam.ogg")
 const _ORBITAL_IMPACT: AudioStream = preload("res://audio/sfx/orbital_impact.ogg")
+const _BAZOOKA: AudioStream = preload("res://audio/sfx/bazooka_shot.ogg")
+const _BAZOOKA_IMPACT: AudioStream = preload("res://audio/sfx/bazooka_impact.ogg")
 
 
 func play_trap_placed() -> void:
@@ -37,8 +39,14 @@ func play_weapon_fired(weapon_id: StringName) -> void:
 		GameState.ORBITAL_CANNON_ID:
 			_play(_ORBITAL_BEAM, -4.0)
 			_play(_ORBITAL_IMPACT, -6.0)
+		GameState.BAZOOKA_ID:
+			_play(_BAZOOKA, -8.0)
 		_:
 			_play(_PISTOL, -11.0)
+
+
+func play_bazooka_impact() -> void:
+	_play(_BAZOOKA_IMPACT, -4.0)
 
 
 func _play(stream: AudioStream, volume_db: float, pitch: float = 1.0) -> void:

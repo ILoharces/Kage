@@ -191,6 +191,7 @@ func _spawn_weapon_boxes(pool_rooms: Array[Room]) -> void:
 		GameState.PLACEHOLDER_PISTOL_ID,
 		GameState.MACHINE_GUN_ID,
 		GameState.ORBITAL_CANNON_ID,
+		GameState.BAZOOKA_ID,
 	]
 	var weapon_rooms: Array[Room] = []
 	for i: int in mini(shuffled.size(), weapon_ids.size()):
